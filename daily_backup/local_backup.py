@@ -13,11 +13,14 @@ from py_mysql.mysql_custom import MySQLDB
 from datetime_skt.datetime_orig import dateArithmetic
 from osfile import fileope
 from mylogger.logger import Logger
+from connection.sshconn import SSHConn
 import subprocess
+import time
 
 # バックアップ用フォルダのルート
-BK_ROOT = '/tmp/shikano/backup/'
-LOG_ROOT = '/tmp/shikano/error_log/'
+BK_ROOT = '/data2/backup/'
+LOG_ROOT = '/data2/backup/daily_backuplog/'
+ERRLOG_ROOT = '/data2/backup/error_log/'
 MYSQL_USER = "root"
 MYSQL_PASSWORD = "mYXe2S6ejG1x5kW!"
 MYSQL_DB = "mysql"
@@ -66,12 +69,14 @@ class localBackup(object):
                 backup_dir = "{0}/{1}".format(monthly_bkdir, daily_bkdir)
                 sub_days = self.date_arith.subtract_target_from_now(backup_dir)
                 self._logger.debug("sub_days = {}".format(sub_days))
-                    # 30日以上経過しているバックアップディレクトリを削除する.
-                if sub_days >= 30:
+                    # 3日以上経過しているバックアップディレクトリを削除する.
+                if sub_days >= 3:
                     try:
                         fileope.f_remove_dirs(path=backup_dir)
                     except OSError as e:
-                        print("raise error! {}".format(backup_dir))
+                        error = "raise error! {}".format(backup_dir)
+                        print(error)
+                        self.output_errlog(error)
                         raise e
 
     def _mk_backupdir(self):
@@ -82,6 +87,8 @@ class localBackup(object):
             db_bkdir = "{0}/{1}".format(self.bk_dir, db)
             if not fileope.dir_exists(path=r"{}".format(db_bkdir)):
                 fileope.make_dirs(path=r"{}".format(db_bkdir))
+        if not fileope.dir_exists(path=r"{}".format(ERRLOG_ROOT)):
+            fileope.make_dirs(path=r"{}".format(ERRLOG_ROOT))
         if not fileope.dir_exists(path=r"{}".format(LOG_ROOT)):
             fileope.make_dirs(path=r"{}".format(LOG_ROOT))
 
@@ -136,7 +143,7 @@ class localBackup(object):
                                                            self.ymd,
                                                            table)
                 mysqldump_cmd = (
-                                "mysqldump -u{0} -p{1} -q --skip-opt {2} {3} > "
+                                "mysqldump -u{0} -p{1} -q --skip-opt -R {2} {3} > "
                                 "{4}".format(MYSQL_USER,
                                              MYSQL_PASSWORD,
                                              db,
@@ -157,6 +164,8 @@ class localBackup(object):
             Returns:
 
         """
+        self.output_logfile("backup start. Date: {}".format(self.ymd))
+        print("backup start. Date: {}".format(self.ymd))
         for exc_cmd in exc_cmds:
             try:
                 subprocess.check_call(args=' '.join(exc_cmd), shell=True)
@@ -164,17 +173,76 @@ class localBackup(object):
                 self._logger.debug("raise error!")
                 self._logger.debug("executed command: {}".format(e.cmd))
                 self._logger.debug("output: {}".format(e.output))
-                f = open(r"{0}{1}_error.log".format(LOG_ROOT, self.ymd), 'a')
+                f = open(r"{0}{1}_error.log".format(ERRLOG_ROOT, self.ymd), 'a')
                 f.write("Error: {}\n".format(e.cmd))
                 f.close()
 
             else:
+                self.output_logfile("mysqldump was executed. backupfile is saved {}".format(self.bk_dir))
                 print("mysqldump was executed. backupfile is saved {}".format(self.bk_dir))
+        self.output_logfile(__file__ + ' is ended.')
+        print(__file__ + ' is ended.')
 
+    def compress_backup(self, del_flag=None):
+        """取得したバックアップファイルを圧縮処理にかける.
+
+        Args:
+            param1 del_flag: 圧縮後、元ファイルを削除するかどうかのフラグ.
+                             デフォルトでは削除する.
+        """
+        if del_flag is None:
+            del_flag = True
+        # DBのディレクトリ名を取得.
+        dir_list = fileope.get_dir_names(self.bk_dir)
+        # gzip圧縮処理
+        for dir_name in dir_list:
+            target_dir = '{0}/{1}'.format(self.bk_dir, dir_name)
+            file_list = fileope.get_file_names(r'{}'.format(target_dir))
+            for file_name in file_list:
+                target_file = '{0}/{1}'.format(target_dir, file_name)
+                try:
+                    fileope.compress_gz(r'{}'.format(target_file))
+                except OSError as oserr:
+                    error = "Error: {}\n".format(oserr.strerror)
+                    self.output_errlog(error)
+                    self.output_errlog("{}: failed to compress.".format(target_file))
+                    print(error)
+                    print("{}: failed to compress.".format(target_file))
+                except ValueError as valerr:
+                    with open(r"{0}{1}_error.log".format(ERRLOG_ROOT, self.ymd), 'a') as f:
+                        print("Error: {}\n".format(valerr))
+                        print("{}: failed to compress.".format(target_file))
+                        f.write("Error: {}\n".format(valerr))
+                else:
+                    print("{}: complete compress.".format(target_file))
+                    if del_flag:
+                        fileope.rm_filedir(target_file)
+
+    def output_logfile(self, line: str):
+        """open a log file and write standard output in a log file.
+
+        Args:
+            param1 line: string of standard output
+                type: string
+        """
+        with open(r"{0}{1}_backup.log".format(LOG_ROOT, self.ymd), 'a') as f:
+            f.write(line)
+
+    def output_errlog(self, line: str):
+        """open a error log file and write standard error output in a error log
+        file.
+
+        Args:
+            param1 line: string of standard error output
+                type: string
+        """
+        with open(r"{0}{1}_error.log".format(ERRLOG_ROOT, self.ymd), 'a') as f:
+            f.write(line)
 
     def main(self):
         """main.
         """
+        start = time.time()
         # バックアップ用ディレクトリの作成.
         self._mk_backupdir()
         # 旧バックアップデータの削除.
@@ -185,6 +253,11 @@ class localBackup(object):
         commands = self.mk_cmd(params=dbs_tables)
         # mysqldumpの実行.
         self.do_backup(commands)
+        # 圧縮処理
+        self.compress_backup()
+        elapsed_time = time.time() - start
+        print("elapsed time: {}sec.".format(elapsed_time))
+
 
 if __name__ == '__main__':
     import argparse
@@ -196,3 +269,52 @@ if __name__ == '__main__':
 
     db_backup = localBackup(loglevel=args.loglevel)
     db_backup.main()
+
+
+
+    def get_transfer_files():
+        """obtain transfer files path."""
+        dirs = get_transfer_dirs()
+        for dir in dirs:
+            filenames = fileope.get_file_names(dir_path=dir)
+            for filename in filenames:
+                target_file = "{0}/{1}".format(target_dir, filename)
+                target_files.append(target_file)
+        return target_files
+
+    def get_transfer_dirs():
+        """obtain transfer directories path."""
+        target_dirs = list()
+        # obtain backup directory path.
+        path = db_backup.bk_dir
+        # obtain Database directory path.
+        db_dirnames = fileope.get_dir_names(dir_path=path)
+        # generates full path of directory.
+        for db_dirname in db_dirnames:
+            target_dir = "{0}/{1}".format(path, db_dirname)
+            target_dirs.append(target_dir)
+        return target_dirs
+
+    def transfer_files(targets: list, remote_path: str):
+        """transfer local data to remoto host."""
+        with SSHConn(hostname=) as dtrans:
+            for target in targets:
+                # if the target data is directory, its comporess to gz format.
+                if fileope.dir_exists(target):
+                    fileope.compress_gz(target)
+                    target = "{}.gz".format(target)
+                try:
+                    # execute scp.
+                    dtrans.scp_put(local_path=target, remote_path=remote_path)
+                except:
+                    print("Error: failed to transfer files/dir to remote host.")
+                    print("target file to failed to transfer is written in /data2/backup/error_log/")
+                    with open(r"{0}{1}_error.log".format(ERRLOG_ROOT, db_backup.ymd), 'a') as f:
+                        f.write("{} was not transfer to remote host.".format(target))
+                    continue
+
+
+
+
+
+
