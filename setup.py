@@ -3,7 +3,10 @@
 # Learn more: https://github.com/kennethreitz/setup.py
 
 from setuptools import setup, find_packages
+import os
 
+
+CONFIG_ROOT = '/etc/backup'
 
 with open('README.rst') as f:
     readme = f.read()
@@ -20,6 +23,16 @@ setup(
     author_email='shikano.takeki@nexon.co.jp',
     url=None,
     license='MIT',
-    packages=find_packages(exclude=('tests', 'docs'))
+    packages=find_packages(exclude=('tests', 'docs')),
+    data_files=[(CONFIG_ROOT, ['config/backup.json'])]
 )
+
+def create_confdir():
+    if not os.path.isdir(CONFIG_ROOT):
+        try:
+            os.makedirs(r"/etc/backup")
+        except OSError:
+            error = "raise error! failed to trying create a backup directory. "
+            raise OSError(error)
+
 

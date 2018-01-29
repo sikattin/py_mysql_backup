@@ -1,0 +1,16 @@
+{
+  "default_path": {
+    "_comment": "directory path to use backup script.",
+    "BK_ROOT": "/data2/backup/",
+    "LOG_ROOT": "/data2/backup/daily_backuplog/",
+    "ERRLOG_ROOT": "/data2/backup/error_log/"
+  },
+  "mysql": {
+    "_comment": "account information when connect to mysql.",
+    "MYSQL_USER": "root",
+    "MYSQL_PASSWORD": "zLKr2F6rwT1k5xJ!",
+    "MYSQL_DB": "mysql",
+    "MYSQL_HOST": "localhost",
+    "MYSQL_PORT": "13306"
+  }
+}

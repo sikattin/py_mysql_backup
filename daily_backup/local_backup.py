@@ -13,6 +13,7 @@ from py_mysql.mysql_custom import MySQLDB
 from datetime_skt.datetime_orig import dateArithmetic
 from osfile import fileope
 from mylogger.logger import Logger
+from iomod import rwfile
 from connection.sshconn import SSHConn
 import subprocess
 import time
@@ -26,7 +27,7 @@ MYSQL_PASSWORD = "mYXe2S6ejG1x5kW!"
 MYSQL_DB = "mysql"
 MYSQL_HOST = "localhost"
 MYSQL_PORT = "13306"
-
+CONFIG_FILE = '/etc/backup/backup.json'
 
 class localBackup(object):
     """
@@ -40,6 +41,9 @@ class localBackup(object):
         Logger.loglevel = loglevel
         self._logger = Logger(str(self))
 
+        self.rwfile = rwfile.RWFile()
+        self.pj = rwfile.ParseJSON()
+
         self.date_arith = dateArithmetic()
         self.year = self.date_arith.get_year()
         self.month = self.date_arith.get_month()
@@ -48,36 +52,107 @@ class localBackup(object):
         self.md = "{0}{1}".format(self.month, self.day)
         self.ymd = "{0}{1}{2}".format(self.year, self.month, self.day)
         self.bk_dir = "{0}{1}/{2}".format(BK_ROOT, self.ym, self.md)
+
+        self.parsed_json = {}
+        self._load_json()
         return self
 
-    def _remove_old_backup(self):
+    def _load_json(self):
+        """jsonファイルをパースする."""
+        self.parsed_json = self.pj.load_json(file=r"{}".format(CONFIG_FILE))
+
+    def _set_data(self):
+        """パースしたJSONオブジェクトから必要なデータを変数にセットする."""
+        self.bk_root = self.parsed_json['default_path']['BK_ROOT']
+        self.log_root = self.parsed_json['default_path']['LOG_ROOT']
+        self.errlog_root = self.parsed_json['default_path']['ERRLOG_ROOT']
+
+        self.myuser = self.parsed_json['mysql']['MYSQL_USER']
+        self.mypass = self.parsed_json['mysql']['MYSQL_PASSWORD']
+        self.mydb = self.parsed_json['mysql']['MYSQL_DB']
+        self.myhost = self.parsed_json['mysql']['MYSQL_HOST']
+        self.myport = self.parsed_json['mysql']['MYSQL_PORT']
+
+    def _remove_old_backup(self, preserved_day=None):
         """旧バックアップデータを削除する.
+
+        Args:
+            param1 preserved_day: バックアップを保存しておく日数. デフォルトは3日
+                type: int
         """
-        # バックアップルートにあるバックアップ用ディレクトリ名一覧を取得する.
+        if preserved_day is None:
+            preserved_day = 3
+        # バックアップルートにあるディレクトリ名一覧を取得する.
         dir_names = fileope.get_dir_names(dir_path=BK_ROOT)
         if len(dir_names) == 0:
             return
         for dir_name in dir_names:
-            # 今月分のバックアップ用ディレクトリは対象外
-            if dir_name == "{}".format(self.ym):
+            # バックアップ用ディレクトリ以外は除外.
+            if not self.rwfile.is_matched(line=dir_name, search_objs=['^[0-9]{6}$']):
                 continue
             # 日毎のバックアップディレクトリ名一覧の取得.
-            monthly_bkdir = "{0}{1}".format(BK_ROOT, self.ym)
+            monthly_bkdir = "{0}{1}".format(BK_ROOT, dir_name)
             daily_bkdirs = fileope.get_dir_names(dir_path=monthly_bkdir)
+            # 日毎のバックアップディレクトリがひとつも存在しない場合は
+            # 月毎のバックアップディレクトリ自体を削除する.
+            if len(daily_bkdirs) == 0:
+                fileope.remove_dir(monthly_bkdir)
+                continue
             for daily_bkdir in daily_bkdirs:
                 # 現在の日付と対象となるディレクトリのタイムスタンプの日数差を計算する.
                 backup_dir = "{0}/{1}".format(monthly_bkdir, daily_bkdir)
                 sub_days = self.date_arith.subtract_target_from_now(backup_dir)
                 self._logger.debug("sub_days = {}".format(sub_days))
-                    # 3日以上経過しているバックアップディレクトリを削除する.
-                if sub_days >= 3:
+                    # 作成されてから3日以上経過しているバックアップディレクトリを削除する.
+                    # ログファイルも削除する.
+                if sub_days >= preserved_day:
                     try:
                         fileope.f_remove_dirs(path=backup_dir)
                     except OSError as e:
-                        error = "raise error! {}".format(backup_dir)
-                        print(error)
+                        error = "raise error! failed to trying remove {}".format(backup_dir)
                         self.output_errlog(error)
                         raise e
+                    else:
+                        stdout = "remove old backup files. {}".format(backup_dir)
+                        self.output_logfile(stdout)
+
+    def _remove_old_log(self, type, elapsed_days=None):
+        """一定日数経過したログファイルを削除する.
+
+        Args:
+            param1 type: 削除対象のログを選択する.
+                指定可能な値 ... 1 | 2
+                1 ... 標準ログ
+                2 ... エラーログ
+            param1 elapsed_days: ログファイルを削除する規定経過日数. デフォルトは5日.
+        """
+        if type == 1:
+            path = LOG_ROOT
+        elif type == 2:
+            path = ERRLOG_ROOT
+        else:
+            raise TypeError("引数 'type' は 1 又は 2 を入力してください。")
+
+        if elapsed_days is None:
+            elapsed_days = 5
+
+        # ログファイル格納ディレクトリからログファイル名一覧を取得する.
+        log_files = fileope.get_file_names(dir_path=path)
+        for log_file in log_files:
+            target = "{0}{1}".format(path, log_file)
+            # 現在の日付とログファイルのタイムスタンプを比較する.
+            days = self.date_arith.subtract_target_from_now(target)
+            # 5日以上経過しているログファイルは削除する.
+            if days >= elapsed_days:
+                try:
+                    fileope.rm_filedir(path=target)
+                except OSError as e:
+                    error = "raise error! failed to trying remove file {}".format(target)
+                    self.output_errlog(error)
+                    raise e
+                else:
+                    stdout = "remove a old log file. {}".format(target)
+                    self.output_logfile(stdout)
 
     def _mk_backupdir(self):
         """バックアップ用ディレクトリを作成する.
@@ -86,7 +161,13 @@ class localBackup(object):
         for db in dbs.keys():
             db_bkdir = "{0}/{1}".format(self.bk_dir, db)
             if not fileope.dir_exists(path=r"{}".format(db_bkdir)):
-                fileope.make_dirs(path=r"{}".format(db_bkdir))
+                try:
+                    fileope.make_dirs(path=r"{}".format(db_bkdir))
+                except OSError as e:
+                    error = "raise error! failed to trying create a backup directory. "
+                    self.output_errlog(error)
+                else:
+                    self.output_logfile("create a backup directory: {}".format(db_bkdir))
         if not fileope.dir_exists(path=r"{}".format(ERRLOG_ROOT)):
             fileope.make_dirs(path=r"{}".format(ERRLOG_ROOT))
         if not fileope.dir_exists(path=r"{}".format(LOG_ROOT)):
@@ -165,7 +246,6 @@ class localBackup(object):
 
         """
         self.output_logfile("backup start. Date: {}".format(self.ymd))
-        print("backup start. Date: {}".format(self.ymd))
         for exc_cmd in exc_cmds:
             try:
                 subprocess.check_call(args=' '.join(exc_cmd), shell=True)
@@ -173,15 +253,12 @@ class localBackup(object):
                 self._logger.debug("raise error!")
                 self._logger.debug("executed command: {}".format(e.cmd))
                 self._logger.debug("output: {}".format(e.output))
-                f = open(r"{0}{1}_error.log".format(ERRLOG_ROOT, self.ymd), 'a')
-                f.write("Error: {}\n".format(e.cmd))
-                f.close()
-
+                error = "Error: an error occured during execution of following command.\n{}\n".format(e.cmd)
+                self.output_errlog(error)
             else:
-                self.output_logfile("mysqldump was executed. backupfile is saved {}".format(self.bk_dir))
-                print("mysqldump was executed. backupfile is saved {}".format(self.bk_dir))
+                stdout = "mysqldump was executed. backupfile is saved {}".format(exc_cmd[len(exc_cmd) - 1])
+                self.output_logfile(stdout)
         self.output_logfile(__file__ + ' is ended.')
-        print(__file__ + ' is ended.')
 
     def compress_backup(self, del_flag=None):
         """取得したバックアップファイルを圧縮処理にかける.
@@ -190,6 +267,7 @@ class localBackup(object):
             param1 del_flag: 圧縮後、元ファイルを削除するかどうかのフラグ.
                              デフォルトでは削除する.
         """
+        self.output_logfile("start compression.")
         if del_flag is None:
             del_flag = True
         # DBのディレクトリ名を取得.
@@ -205,16 +283,14 @@ class localBackup(object):
                 except OSError as oserr:
                     error = "Error: {}\n".format(oserr.strerror)
                     self.output_errlog(error)
-                    self.output_errlog("{}: failed to compress.".format(target_file))
-                    print(error)
-                    print("{}: failed to compress.".format(target_file))
+                    self.output_errlog("Error: {} failed to compress.".format(target_file))
                 except ValueError as valerr:
-                    with open(r"{0}{1}_error.log".format(ERRLOG_ROOT, self.ymd), 'a') as f:
-                        print("Error: {}\n".format(valerr))
-                        print("{}: failed to compress.".format(target_file))
-                        f.write("Error: {}\n".format(valerr))
+                    error = "Error: {}\n".format(valerr)
+                    self.output_errlog(error)
+                    self.output_errlog("Error: {} failed to compress.".format(target_file))
                 else:
-                    print("{}: complete compress.".format(target_file))
+                    stdout = "{}: complete compress.".format(target_file)
+                    self.output_logfile(stdout)
                     if del_flag:
                         fileope.rm_filedir(target_file)
 
@@ -225,6 +301,7 @@ class localBackup(object):
             param1 line: string of standard output
                 type: string
         """
+        print(line)
         with open(r"{0}{1}_backup.log".format(LOG_ROOT, self.ymd), 'a') as f:
             f.write(line)
 
@@ -236,6 +313,7 @@ class localBackup(object):
             param1 line: string of standard error output
                 type: string
         """
+        print(line)
         with open(r"{0}{1}_error.log".format(ERRLOG_ROOT, self.ymd), 'a') as f:
             f.write(line)
 
@@ -247,6 +325,9 @@ class localBackup(object):
         self._mk_backupdir()
         # 旧バックアップデータの削除.
         self._remove_old_backup()
+        # ログファイルの削除.
+        self._remove_old_log(type=1)
+        self._remove_old_log(type=2)
         # DB名とテーブル名一覧の取得.
         dbs_tables = self.get_dbs_and_tables()
         # 実行するLinuxコマンドを生成.
@@ -297,7 +378,7 @@ if __name__ == '__main__':
 
     def transfer_files(targets: list, remote_path: str):
         """transfer local data to remoto host."""
-        with SSHConn(hostname=) as dtrans:
+        with SSHConn(hostname='', username='') as dtrans:
             for target in targets:
                 # if the target data is directory, its comporess to gz format.
                 if fileope.dir_exists(target):
