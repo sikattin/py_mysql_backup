@@ -6,8 +6,6 @@ from setuptools import setup, find_packages
 import os
 
 
-CONFIG_ROOT = '/etc/backup'
-
 with open('README.rst') as f:
     readme = f.read()
 
@@ -16,7 +14,7 @@ with open('LICENSE') as f:
 
 setup(
     name='daily_backup',
-    version='1.0',
+    version='1.2',
     description='MySQL backup script.',
     long_description=readme,
     author='Takeki Shikano',
@@ -24,15 +22,7 @@ setup(
     url=None,
     license='MIT',
     packages=find_packages(exclude=('tests', 'docs')),
-    data_files=[(CONFIG_ROOT, ['config/backup.json'])]
+    package_data={'daily_backup': ['config/backup.json']}
 )
-
-def create_confdir():
-    if not os.path.isdir(CONFIG_ROOT):
-        try:
-            os.makedirs(r"/etc/backup")
-        except OSError:
-            error = "raise error! failed to trying create a backup directory. "
-            raise OSError(error)
 
 

@@ -18,16 +18,9 @@ from connection.sshconn import SSHConn
 import subprocess
 import time
 
-# バックアップ用フォルダのルート
-BK_ROOT = '/data2/backup/'
-LOG_ROOT = '/data2/backup/daily_backuplog/'
-ERRLOG_ROOT = '/data2/backup/error_log/'
-MYSQL_USER = "root"
-MYSQL_PASSWORD = "mYXe2S6ejG1x5kW!"
-MYSQL_DB = "mysql"
-MYSQL_HOST = "localhost"
-MYSQL_PORT = "13306"
-CONFIG_FILE = '/etc/backup/backup.json'
+CONFIG_FILE = 'backup.json'
+INST_DIR = ''
+CONFIG_PATH = ''
 
 class localBackup(object):
     """
@@ -35,6 +28,8 @@ class localBackup(object):
 
     def __new__(cls, loglevel=None):
         self = super().__new__(cls)
+
+        self._get_pylibdir()
         # ロガーのセットアップ.
         if loglevel is None:
             loglevel = 30
@@ -43,6 +38,9 @@ class localBackup(object):
 
         self.rwfile = rwfile.RWFile()
         self.pj = rwfile.ParseJSON()
+        self.parsed_json = {}
+        self._load_json()
+        self._set_data()
 
         self.date_arith = dateArithmetic()
         self.year = self.date_arith.get_year()
@@ -51,27 +49,41 @@ class localBackup(object):
         self.ym = "{0}{1}".format(self.year, self.month)
         self.md = "{0}{1}".format(self.month, self.day)
         self.ymd = "{0}{1}{2}".format(self.year, self.month, self.day)
-        self.bk_dir = "{0}{1}/{2}".format(BK_ROOT, self.ym, self.md)
+        self.bk_dir = "{0}{1}/{2}".format(self.bk_root, self.ym, self.md)
 
-        self.parsed_json = {}
-        self._load_json()
         return self
+
+    def _get_pylibdir(self):
+            import daily_backup
+
+            global INST_DIR, CONFIG_PATH
+            INST_DIR = daily_backup.__path__
+            CONFIG_PATH = "{0}/config/{1}".format(INST_DIR[0], CONFIG_FILE)
 
     def _load_json(self):
         """jsonファイルをパースする."""
-        self.parsed_json = self.pj.load_json(file=r"{}".format(CONFIG_FILE))
+        self.parsed_json = self.pj.load_json(file=r"{}".format(CONFIG_PATH))
 
     def _set_data(self):
         """パースしたJSONオブジェクトから必要なデータを変数にセットする."""
+        # PATH
         self.bk_root = self.parsed_json['default_path']['BK_ROOT']
         self.log_root = self.parsed_json['default_path']['LOG_ROOT']
         self.errlog_root = self.parsed_json['default_path']['ERRLOG_ROOT']
+        self.config_path = self.parsed_json['default_path']['CONFIG_PATH']
 
+        # MYSQL
         self.myuser = self.parsed_json['mysql']['MYSQL_USER']
         self.mypass = self.parsed_json['mysql']['MYSQL_PASSWORD']
         self.mydb = self.parsed_json['mysql']['MYSQL_DB']
         self.myhost = self.parsed_json['mysql']['MYSQL_HOST']
         self.myport = self.parsed_json['mysql']['MYSQL_PORT']
+
+    def _decrypt_string(self, line: str):
+        import codecs
+
+        decrypted = codecs.decode(line, 'rot_13')
+        return decrypted
 
     def _remove_old_backup(self, preserved_day=None):
         """旧バックアップデータを削除する.
@@ -83,7 +95,7 @@ class localBackup(object):
         if preserved_day is None:
             preserved_day = 3
         # バックアップルートにあるディレクトリ名一覧を取得する.
-        dir_names = fileope.get_dir_names(dir_path=BK_ROOT)
+        dir_names = fileope.get_dir_names(dir_path=self.bk_root)
         if len(dir_names) == 0:
             return
         for dir_name in dir_names:
@@ -91,7 +103,7 @@ class localBackup(object):
             if not self.rwfile.is_matched(line=dir_name, search_objs=['^[0-9]{6}$']):
                 continue
             # 日毎のバックアップディレクトリ名一覧の取得.
-            monthly_bkdir = "{0}{1}".format(BK_ROOT, dir_name)
+            monthly_bkdir = "{0}{1}".format(self.bk_root, dir_name)
             daily_bkdirs = fileope.get_dir_names(dir_path=monthly_bkdir)
             # 日毎のバックアップディレクトリがひとつも存在しない場合は
             # 月毎のバックアップディレクトリ自体を削除する.
@@ -127,9 +139,9 @@ class localBackup(object):
             param1 elapsed_days: ログファイルを削除する規定経過日数. デフォルトは5日.
         """
         if type == 1:
-            path = LOG_ROOT
+            path = self.log_root
         elif type == 2:
-            path = ERRLOG_ROOT
+            path = self.errlog_root
         else:
             raise TypeError("引数 'type' は 1 又は 2 を入力してください。")
 
@@ -157,6 +169,13 @@ class localBackup(object):
     def _mk_backupdir(self):
         """バックアップ用ディレクトリを作成する.
         """
+        # ログ出力ディレクトリ作成
+        # ToDO /var/logにはくようにする　ディレクトリ構成を考える.
+        if not fileope.dir_exists(path=r"{}".format(self.errlog_root)):
+            fileope.make_dirs(path=r"{}".format(self.errlog_root))
+        if not fileope.dir_exists(path=r"{}".format(self.log_root)):
+            fileope.make_dirs(path=r"{}".format(self.log_root))
+
         dbs = self.get_dbs_and_tables()
         for db in dbs.keys():
             db_bkdir = "{0}/{1}".format(self.bk_dir, db)
@@ -168,10 +187,6 @@ class localBackup(object):
                     self.output_errlog(error)
                 else:
                     self.output_logfile("create a backup directory: {}".format(db_bkdir))
-        if not fileope.dir_exists(path=r"{}".format(ERRLOG_ROOT)):
-            fileope.make_dirs(path=r"{}".format(ERRLOG_ROOT))
-        if not fileope.dir_exists(path=r"{}".format(LOG_ROOT)):
-            fileope.make_dirs(path=r"{}".format(LOG_ROOT))
 
     def get_dbs_and_tables(self):
         """MYSQLに接続してデータベース名とテーブル名を取得する.
@@ -182,11 +197,11 @@ class localBackup(object):
         """
         results = {}
         # MySQLに接続する.
-        with MySQLDB(host=MYSQL_HOST,
-                     dst_db=MYSQL_DB,
-                     myuser=MYSQL_USER,
-                     mypass=MYSQL_PASSWORD,
-                     port=MYSQL_PORT) as mysqldb:
+        with MySQLDB(host=self.myhost,
+                     dst_db=self.mydb,
+                     myuser=self.myuser,
+                     mypass=self._decrypt_string(self.mypass),
+                     port=self.myport) as mysqldb:
             # SHOW DATABASES;
             sql = mysqldb.escape_statement("SHOW DATABASES;")
             cur_showdb = mysqldb.execute_sql(sql)
@@ -225,8 +240,8 @@ class localBackup(object):
                                                            table)
                 mysqldump_cmd = (
                                 "mysqldump -u{0} -p{1} -q --skip-opt -R {2} {3} > "
-                                "{4}".format(MYSQL_USER,
-                                             MYSQL_PASSWORD,
+                                "{4}".format(self.myuser,
+                                             self._decrypt_string(self.mypass),
                                              db,
                                              table,
                                              output_path)
@@ -302,7 +317,7 @@ class localBackup(object):
                 type: string
         """
         print(line)
-        with open(r"{0}{1}_backup.log".format(LOG_ROOT, self.ymd), 'a') as f:
+        with open(r"{0}{1}_backup.log".format(self.log_root, self.ymd), 'a') as f:
             f.write(line)
 
     def output_errlog(self, line: str):
@@ -314,7 +329,7 @@ class localBackup(object):
                 type: string
         """
         print(line)
-        with open(r"{0}{1}_error.log".format(ERRLOG_ROOT, self.ymd), 'a') as f:
+        with open(r"{0}{1}_error.log".format(self.errlog_root, self.ymd), 'a') as f:
             f.write(line)
 
     def main(self):
@@ -340,30 +355,70 @@ class localBackup(object):
         print("elapsed time: {}sec.".format(elapsed_time))
 
 
-if __name__ == '__main__':
-    import argparse
-    argparser = argparse.ArgumentParser(description='MySQL backup script.')
-    argparser.add_argument('-l', '--loglevel', type=int, required=False,
-                           default=30,
-                           help='ログレベルの指定.デフォルトはWARNING. 0,10,20,30...')
-    args = argparser.parse_args()
+class DataTransfer(object):
+    """for transfering data class."""
 
-    db_backup = localBackup(loglevel=args.loglevel)
-    db_backup.main()
+    def __init__(self, loglevel=None):
+        """constructor
 
+        Args:
+            param1 loglevel: log level. default is 30.
 
+        """
+        self._get_pylibdir()
+        # ロガーのセットアップ.
+        if loglevel is None:
+            loglevel = 30
+        Logger.loglevel = loglevel
+        self._logger = Logger(str(self))
 
-    def get_transfer_files():
+        self.lb = localBackup()
+        self.ymd = lb.ymd
+
+        self.rwfile = rwfile.RWFile()
+        self.pj = rwfile.ParseJSON()
+        self.parsed_json = {}
+        self._load_json()
+        self._set_data()
+
+    def _get_pylibdir(self):
+        import daily_backup
+
+        global INST_DIR, CONFIG_PATH
+        INST_DIR = daily_backup.__path__
+        CONFIG_PATH = "{0}/config/{1}".format(INST_DIR[0], CONFIG_FILE)
+
+    def _load_json(self):
+        """jsonファイルをパースする."""
+        self.parsed_json = self.pj.load_json(file=r"{}".format(CONFIG_PATH))
+
+    def _set_data(self):
+        """パースしたJSONオブジェクトから必要なデータを変数にセットする."""
+        # PATH
+        self.log_root = self.parsed_json['default_path']['LOG_ROOT']
+        self.errlog_root = self.parsed_json['default_path']['ERRLOG_ROOT']
+
+        # SSH
+        # hostname to connect ssh
+        self.ssh_host = dict_json['ssh']['hostname']
+        # username
+        self.ssh_user = dict_json['ssh']['username']
+        # private key file
+        self.private_key = dict_json['ssh']['private_key']
+        # remote path
+        self.remote_path = dict_json['ssh']['remote_path']
+
+    def get_transfer_files(self):
         """obtain transfer files path."""
         dirs = get_transfer_dirs()
         for dir in dirs:
             filenames = fileope.get_file_names(dir_path=dir)
             for filename in filenames:
-                target_file = "{0}/{1}".format(target_dir, filename)
+                target_file = "{0}/{1}".format(dir, filename)
                 target_files.append(target_file)
         return target_files
 
-    def get_transfer_dirs():
+    def get_transfer_dirs(self):
         """obtain transfer directories path."""
         target_dirs = list()
         # obtain backup directory path.
@@ -376,26 +431,46 @@ if __name__ == '__main__':
             target_dirs.append(target_dir)
         return target_dirs
 
-    def transfer_files(targets: list, remote_path: str):
-        """transfer local data to remoto host."""
-        with SSHConn(hostname='', username='') as dtrans:
+    def transfer_files(self, targets: list, remote_path: str):
+        """transfer local data to remoto host.
+
+        Args:
+            param1 targets: target file/dir"""
+        print("Start transfering process.")
+        with SSHConn(hostname=self.ssh_host,
+                     username=self.ssh_user,
+                     key_filename=self.private_key) as dtrans:
             for target in targets:
                 # if the target data is directory, its comporess to gz format.
                 if fileope.dir_exists(target):
                     fileope.compress_gz(target)
                     target = "{}.gz".format(target)
                 try:
+                    self._logger.debug("try to scp.")
                     # execute scp.
-                    dtrans.scp_put(local_path=target, remote_path=remote_path)
+                    dtrans.scp_put(local_path=target, remote_path=self.remote_path)
                 except:
                     print("Error: failed to transfer files/dir to remote host.")
-                    print("target file to failed to transfer is written in /data2/backup/error_log/")
-                    with open(r"{0}{1}_error.log".format(ERRLOG_ROOT, db_backup.ymd), 'a') as f:
+                    print("failed to transfer the target file. output error log in /data2/backup/error_log/")
+                    with open(r"{0}{1}_error.log".format(self.errlog_root, self.ymd), 'a') as f:
                         f.write("{} was not transfer to remote host.".format(target))
                     continue
+                else:
+                    print("succeeded to transfer from {0} to {1}".format(target, remote_path))
+                    with open(r"{0}{1}_backup.log".format(db_backup.log_root, db_backup.ymd), 'a') as f:
+                        f.write(line)
 
 
+if __name__ == '__main__':
+    import argparse
+    argparser = argparse.ArgumentParser(description='MySQL backup script.')
+    argparser.add_argument('-l', '--                                                                                                                   loglevel', type=int, required=False,
+                           default=30,
+                           help='ログレベルの指定.デフォルトはWARNING. 0,10,20,30...')
+    args = argparser.parse_args()
 
+    db_backup = localBackup(loglevel=args.loglevel)
+    db_backup.main()
 
-
-
+    d_trans = DataTransfer(loglevel=args.loglevel)
+    d_trans.transfer_files(targets=[db_backup.bk_dir])

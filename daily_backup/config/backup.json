@@ -1,0 +1,23 @@
+{
+  "default_path": {
+    "_comment": "directory path to use backup script.",
+    "BK_ROOT": "/data2/backup/",
+    "LOG_ROOT": "/data2/backup/daily_backuplog/",
+    "ERRLOG_ROOT": "/data2/backup/error_log/",
+    "CONFIG_PATH": "/usr/local/etc/daily_backup/config/backup.json"
+  },
+  "mysql": {
+    "_comment": "necessary account information when connecting to mysql.",
+    "MYSQL_USER": "root",
+    "MYSQL_PASSWORD": "zLKr2F6rwT1k5xJ!",
+    "MYSQL_DB": "mysql",
+    "MYSQL_HOST": "localhost",
+    "MYSQL_PORT": "13306"
+  },
+  "ssh": {
+    "_comment": "necessary account info when connecting to remote host.",
+    "hostname": "172.16.30.30",
+    "username": "Nxj_ToS_TS1",
+    "private_key": "/home/Nxj_ToS_TS1/.ssh/id_rsa" 
+  }
+}
