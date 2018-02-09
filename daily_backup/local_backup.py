@@ -356,15 +356,24 @@ class localBackup(object):
 
 
 class DataTransfer(object):
-    """for transfering data class."""
+    """Transfer the data using scp."""
 
-    def __init__(self, loglevel=None):
+    def __init__(self,
+                 hostname: str,
+                 username: str,
+                 keyfile_path=None,
+                 password=None,
+                 logpath=".",
+                 errlog_path=".",
+                 loglevel=None):
         """constructor
 
         Args:
             param1 loglevel: log level. default is 30.
 
         """
+        from datetime import datetime
+
         self._get_pylibdir()
         # ロガーのセットアップ.
         if loglevel is None:
@@ -372,41 +381,22 @@ class DataTransfer(object):
         Logger.loglevel = loglevel
         self._logger = Logger(str(self))
 
-        self.lb = localBackup()
-        self.ymd = lb.ymd
-
-        self.rwfile = rwfile.RWFile()
-        self.pj = rwfile.ParseJSON()
-        self.parsed_json = {}
-        self._load_json()
-        self._set_data()
-
-    def _get_pylibdir(self):
-        import daily_backup
-
-        global INST_DIR, CONFIG_PATH
-        INST_DIR = daily_backup.__path__
-        CONFIG_PATH = "{0}/config/{1}".format(INST_DIR[0], CONFIG_FILE)
-
-    def _load_json(self):
-        """jsonファイルをパースする."""
-        self.parsed_json = self.pj.load_json(file=r"{}".format(CONFIG_PATH))
-
-    def _set_data(self):
-        """パースしたJSONオブジェクトから必要なデータを変数にセットする."""
-        # PATH
-        self.log_root = self.parsed_json['default_path']['LOG_ROOT']
-        self.errlog_root = self.parsed_json['default_path']['ERRLOG_ROOT']
-
-        # SSH
         # hostname to connect ssh
-        self.ssh_host = dict_json['ssh']['hostname']
+        self.ssh_host = hostname
         # username
-        self.ssh_user = dict_json['ssh']['username']
+        self.ssh_user = username
         # private key file
-        self.private_key = dict_json['ssh']['private_key']
-        # remote path
-        self.remote_path = dict_json['ssh']['remote_path']
+        self.private_key = keyfile_path
+        # password
+        self.password = password
+        # log file root path.
+        self.log_root = logpath
+        # error log file root path.
+        self.errlog_root = errlog_path
+        # YYYYmmdd
+        self.ymd = datetime.now().strftime("%Y") + \
+                   datetime.now().strftime("%m") + \
+                   datetime.now().strftime("%d")
 
     def get_transfer_files(self):
         """obtain transfer files path."""
@@ -418,11 +408,9 @@ class DataTransfer(object):
                 target_files.append(target_file)
         return target_files
 
-    def get_transfer_dirs(self):
+    def get_transfer_dirs(self, path: str):
         """obtain transfer directories path."""
         target_dirs = list()
-        # obtain backup directory path.
-        path = db_backup.bk_dir
         # obtain Database directory path.
         db_dirnames = fileope.get_dir_names(dir_path=path)
         # generates full path of directory.
@@ -435,29 +423,31 @@ class DataTransfer(object):
         """transfer local data to remoto host.
 
         Args:
-            param1 targets: target file/dir"""
+            param1 targets: target file/dir
+            param2 remote_path: remote host path.
+        """
         print("Start transfering process.")
         with SSHConn(hostname=self.ssh_host,
                      username=self.ssh_user,
-                     key_filename=self.private_key) as dtrans:
+                     authkey=self.private_key) as dtrans:
             for target in targets:
                 # if the target data is directory, its comporess to gz format.
                 if fileope.dir_exists(target):
-                    fileope.compress_gz(target)
-                    target = "{}.gz".format(target)
+                    fileope.zip_data(file_path=target)
+                    target = "{}.zip".format(target)
                 try:
                     self._logger.debug("try to scp.")
                     # execute scp.
-                    dtrans.scp_put(local_path=target, remote_path=self.remote_path)
+                    dtrans.scp_put(local_path=target, remote_path=remote_path)
                 except:
                     print("Error: failed to transfer files/dir to remote host.")
-                    print("failed to transfer the target file. output error log in /data2/backup/error_log/")
-                    with open(r"{0}{1}_error.log".format(self.errlog_root, self.ymd), 'a') as f:
+                    print("failed to transfer the target file. output error log in {}".format(self.errlog_root))
+                    with open(r"{0}/{1}_error.log".format(self.errlog_root, self.ymd), 'a') as f:
                         f.write("{} was not transfer to remote host.".format(target))
                     continue
                 else:
                     print("succeeded to transfer from {0} to {1}".format(target, remote_path))
-                    with open(r"{0}{1}_backup.log".format(db_backup.log_root, db_backup.ymd), 'a') as f:
+                    with open(r"{0}/{1}_backup.log".format(self.log_root, self.ymd), 'a') as f:
                         f.write(line)
 
 
@@ -472,5 +462,34 @@ if __name__ == '__main__':
     db_backup = localBackup(loglevel=args.loglevel)
     db_backup.main()
 
-    d_trans = DataTransfer(loglevel=args.loglevel)
-    d_trans.transfer_files(targets=[db_backup.bk_dir])
+    # Log file path
+    log_path = {}
+    # information about SSH connection
+    sshconn_info = {}
+    json_dict = parse_json()
+    set_path(json_dict)
+
+    d_trans = DataTransfer(hostname=sshconn_info["ssh_host"],
+                           username=sshconn_info["ssh_user"],
+                           keyfile_path=sshconn_info["private_key"],
+                           loglevel=args.loglevel)
+    d_trans.transfer_files(targets=[db_backup.bk_dir],
+                           remote_path=sshconn_info["remote_path"])
+
+    def parse_json():
+        parse_j = rwfile.ParseJSON()
+        obj_json = {}
+        obj_json = parse_j.load_json(file=CONFIG_PATH)
+        return obj_json
+
+    def set_path(obj_json: dict):
+        # Log file PATH.
+        global log_path, sshconn_info
+        log_path = {"log_root": obj_json['default_path']['LOG_ROOT'],
+                    "errlog_root": obj_json['default_path']['ERRLOG_ROOT']}
+        sshconn_info = {"ssh_host": obj_json['ssh']['hostname'],
+                        "ssh_user": obj_json['ssh']['username'],
+                        "private_key": obj_json['ssh']['private_key'],
+                        "remote_path": obj_json['ssh']['remote_path']}
+
+
