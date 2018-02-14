@@ -15,6 +15,7 @@ from osfile import fileope
 from mylogger.logger import Logger
 from iomod import rwfile
 from connection.sshconn import SSHConn
+from datatransfer.datatransfer import DataTransfer
 import subprocess
 import time
 
@@ -116,7 +117,6 @@ class localBackup(object):
                 sub_days = self.date_arith.subtract_target_from_now(backup_dir)
                 self._logger.debug("sub_days = {}".format(sub_days))
                     # 作成されてから3日以上経過しているバックアップディレクトリを削除する.
-                    # ログファイルも削除する.
                 if sub_days >= preserved_day:
                     try:
                         fileope.f_remove_dirs(path=backup_dir)
@@ -355,102 +355,6 @@ class localBackup(object):
         print("elapsed time: {}sec.".format(elapsed_time))
 
 
-class DataTransfer(object):
-    """Transfer the data using scp."""
-
-    def __init__(self,
-                 hostname: str,
-                 username: str,
-                 keyfile_path=None,
-                 password=None,
-                 logpath=".",
-                 errlog_path=".",
-                 loglevel=None):
-        """constructor
-
-        Args:
-            param1 loglevel: log level. default is 30.
-
-        """
-        from datetime import datetime
-
-        self._get_pylibdir()
-        # ロガーのセットアップ.
-        if loglevel is None:
-            loglevel = 30
-        Logger.loglevel = loglevel
-        self._logger = Logger(str(self))
-
-        # hostname to connect ssh
-        self.ssh_host = hostname
-        # username
-        self.ssh_user = username
-        # private key file
-        self.private_key = keyfile_path
-        # password
-        self.password = password
-        # log file root path.
-        self.log_root = logpath
-        # error log file root path.
-        self.errlog_root = errlog_path
-        # YYYYmmdd
-        self.ymd = datetime.now().strftime("%Y") + \
-                   datetime.now().strftime("%m") + \
-                   datetime.now().strftime("%d")
-
-    def get_transfer_files(self):
-        """obtain transfer files path."""
-        dirs = get_transfer_dirs()
-        for dir in dirs:
-            filenames = fileope.get_file_names(dir_path=dir)
-            for filename in filenames:
-                target_file = "{0}/{1}".format(dir, filename)
-                target_files.append(target_file)
-        return target_files
-
-    def get_transfer_dirs(self, path: str):
-        """obtain transfer directories path."""
-        target_dirs = list()
-        # obtain Database directory path.
-        db_dirnames = fileope.get_dir_names(dir_path=path)
-        # generates full path of directory.
-        for db_dirname in db_dirnames:
-            target_dir = "{0}/{1}".format(path, db_dirname)
-            target_dirs.append(target_dir)
-        return target_dirs
-
-    def transfer_files(self, targets: list, remote_path: str):
-        """transfer local data to remoto host.
-
-        Args:
-            param1 targets: target file/dir
-            param2 remote_path: remote host path.
-        """
-        print("Start transfering process.")
-        with SSHConn(hostname=self.ssh_host,
-                     username=self.ssh_user,
-                     authkey=self.private_key) as dtrans:
-            for target in targets:
-                # if the target data is directory, its comporess to gz format.
-                if fileope.dir_exists(target):
-                    fileope.zip_data(file_path=target)
-                    target = "{}.zip".format(target)
-                try:
-                    self._logger.debug("try to scp.")
-                    # execute scp.
-                    dtrans.scp_put(local_path=target, remote_path=remote_path)
-                except:
-                    print("Error: failed to transfer files/dir to remote host.")
-                    print("failed to transfer the target file. output error log in {}".format(self.errlog_root))
-                    with open(r"{0}/{1}_error.log".format(self.errlog_root, self.ymd), 'a') as f:
-                        f.write("{} was not transfer to remote host.".format(target))
-                    continue
-                else:
-                    print("succeeded to transfer from {0} to {1}".format(target, remote_path))
-                    with open(r"{0}/{1}_backup.log".format(self.log_root, self.ymd), 'a') as f:
-                        f.write(line)
-
-
 if __name__ == '__main__':
     import argparse
     argparser = argparse.ArgumentParser(description='MySQL backup script.')
@@ -472,6 +376,8 @@ if __name__ == '__main__':
     d_trans = DataTransfer(hostname=sshconn_info["ssh_host"],
                            username=sshconn_info["ssh_user"],
                            keyfile_path=sshconn_info["private_key"],
+                           logpath=db_backup.log_root[:-1],
+                           errlog_path=db_backup.errlog_root[:-1],
                            loglevel=args.loglevel)
     d_trans.transfer_files(targets=[db_backup.bk_dir],
                            remote_path=sshconn_info["remote_path"])
