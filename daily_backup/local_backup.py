@@ -9,16 +9,32 @@
 # Licence:     <your licence>
 #-------------------------------------------------------------------------------
 # -*- coding: utf-8 -*-
+## import modules.
+# mysql operation
 from py_mysql.mysql_custom import MySQLDB
+# date operation
 from datetime_skt.datetime_orig import dateArithmetic
+# file/dir operation
 from osfile import fileope
-from mylogger.logger import Logger
+# logger
+from mylogger import logger
+from mylogger.factory import StdoutLoggerFactory, \
+                             FileLoggerFactory, \
+                             RotationLoggerFactory
+# read/write operation to file
 from iomod import rwfile
+# ssh connection
 from connection.sshconn import SSHConn
+# transfer data local to remote
 from datatransfer.datatransfer import DataTransfer
+# python standard modules
 import subprocess
 import time
 
+# base log file name.
+LOGFILE = 'mariadb_dayilybup.log'
+# config file name.
+# default config file path is <python lib>/dist|site-packages/daily_backup/config
 CONFIG_FILE = 'backup.json'
 INST_DIR = ''
 CONFIG_PATH = ''
@@ -27,21 +43,41 @@ class localBackup(object):
     """
     """
 
-    def __new__(cls, loglevel=None):
+    def __new__(cls, loglevel=None, handler=None):
         self = super().__new__(cls)
 
-        self._get_pylibdir()
-        # ロガーのセットアップ.
-        if loglevel is None:
-            loglevel = 30
-        Logger.loglevel = loglevel
-        self._logger = Logger(str(self))
+        if not handler in {'rotation', 'file', 'console'}:
+            raise TypeError("set a valid value to handler arg. you set {}".format(handler))
 
+        # JSONファイルから各種データの読み込み、インスタンス変数にセット.
+        self.parsed_json = {}
+        self._get_pylibdir()
         self.rwfile = rwfile.RWFile()
         self.pj = rwfile.ParseJSON()
-        self.parsed_json = {}
         self._load_json()
         self._set_data()
+        self.logfile = "{0}/{1}".format(self.log_root, LOGFILE)
+
+        # set up logger.
+        # loglevel 20 = info level.
+        if loglevel is None:
+            loglevel = 20
+        if handler is None:
+            handler = 'rotation'
+            logrotate_count = 3
+        self._handler = handler
+        # create file logger.
+        if self._handler == 'file':
+            filelogger_fac = FileLoggerFactory(loglevel=loglevel)
+            self._logger = filelogger_fac.create(file=self.logfile)
+        # create stdout logger.
+        elif self._handler == 'console':
+            stdlogger_fac = StdoutLoggerFactory(loglevel=loglevel)
+            self._logger = stdlogger_fac.create()
+        # create rotation logger.
+        else:
+            rotlogger_fac = RotationLoggerFactory(loglevel=loglevel)
+            self._logger = rotlogger_fac.create(file=self.logfile, bcount=logrotate_count)
 
         self.date_arith = dateArithmetic()
         self.year = self.date_arith.get_year()
@@ -67,10 +103,11 @@ class localBackup(object):
 
     def _set_data(self):
         """パースしたJSONオブジェクトから必要なデータを変数にセットする."""
+        import os
         # PATH
         self.bk_root = self.parsed_json['default_path']['BK_ROOT']
         self.log_root = self.parsed_json['default_path']['LOG_ROOT']
-        self.errlog_root = self.parsed_json['default_path']['ERRLOG_ROOT']
+        self.log_file = os.path.join(self.log_root, LOGFILE)
         self.config_path = self.parsed_json['default_path']['CONFIG_PATH']
 
         # MYSQL
@@ -122,11 +159,13 @@ class localBackup(object):
                         fileope.f_remove_dirs(path=backup_dir)
                     except OSError as e:
                         error = "raise error! failed to trying remove {}".format(backup_dir)
-                        self.output_errlog(error)
+                        self._logger.error(error)
                         raise e
                     else:
-                        stdout = "remove old backup files. {}".format(backup_dir)
-                        self.output_logfile(stdout)
+                        stdout = "remove old dump files: {}".format(backup_dir)
+                        self._logger.info(stdout)
+
+    ''' ログローテーション機能はLoggerモジュールで実装したためこれはさようなら
 
     def _remove_old_log(self, type, elapsed_days=None):
         """一定日数経過したログファイルを削除する.
@@ -165,28 +204,40 @@ class localBackup(object):
                 else:
                     stdout = "remove a old log file. {}".format(target)
                     self.output_logfile(stdout)
+    '''
 
     def _mk_backupdir(self):
         """バックアップ用ディレクトリを作成する.
         """
-        # ログ出力ディレクトリ作成
-        # ToDO /var/logにはくようにする　ディレクトリ構成を考える.
-        if not fileope.dir_exists(path=r"{}".format(self.errlog_root)):
-            fileope.make_dirs(path=r"{}".format(self.errlog_root))
+        # make a directory for putting log files.
         if not fileope.dir_exists(path=r"{}".format(self.log_root)):
-            fileope.make_dirs(path=r"{}".format(self.log_root))
+            try:
+                fileope.make_dirs(path=r"{}".format(self.log_root))
+            except OSError as e:
+                error = "raise error! failed to trying create a log directory."
+                self._logger.error(error)
+                raise e
+            else:
+                self._logger.info("create a log directory: {}".format(self.log_root))
+                # set permissions.
+                from os import chmod
+                from stat import S_IRUSR, S_IWUSR, S_IRGRP, S_IROTH
+                mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH
+                chmod(path=self.log_root, mode=mode)
 
+        # make a directory for db backup.
         dbs = self.get_dbs_and_tables()
         for db in dbs.keys():
-            db_bkdir = "{0}/{1}".format(self.bk_dir, db)
+            db_bkdir = fileope.join_path(self.bk_dir, db)
             if not fileope.dir_exists(path=r"{}".format(db_bkdir)):
                 try:
                     fileope.make_dirs(path=r"{}".format(db_bkdir))
                 except OSError as e:
-                    error = "raise error! failed to trying create a backup directory. "
-                    self.output_errlog(error)
+                    error = "raise error! failed to trying create a backup directory."
+                    self._logger.error(error)
+                    raise e
                 else:
-                    self.output_logfile("create a backup directory: {}".format(db_bkdir))
+                    self._logger.info("create a backup directory: {}".format(db_bkdir))
 
     def get_dbs_and_tables(self):
         """MYSQLに接続してデータベース名とテーブル名を取得する.
@@ -203,6 +254,7 @@ class localBackup(object):
                      mypass=self._decrypt_string(self.mypass),
                      port=self.myport) as mysqldb:
             # SHOW DATABASES;
+            self._logger.info("Database names now acquireing...")
             sql = mysqldb.escape_statement("SHOW DATABASES;")
             cur_showdb = mysqldb.execute_sql(sql)
             for db_name in cur_showdb.fetchall():
@@ -219,6 +271,7 @@ class localBackup(object):
                         for table_str in table_name:
                             # 辞書にキーとバリューの追加.
                             results.setdefault(db_str, []).append(table_str)
+        self._logger.info("succeeded acquireing database names.")
         return results
 
     def mk_cmd(self, params):
@@ -230,6 +283,7 @@ class localBackup(object):
         Return.
             tupple command.
         """
+        self._logger.info("creating mysql dump command...")
         cmds = tuple()
         for db, tables in params.items():
             for table in tables:
@@ -260,20 +314,17 @@ class localBackup(object):
             Returns:
 
         """
-        self.output_logfile("backup start. Date: {}".format(self.ymd))
+        self._logger.info("backup start. Date: {}".format(self.ymd))
         for exc_cmd in exc_cmds:
             try:
                 subprocess.check_call(args=' '.join(exc_cmd), shell=True)
             except subprocess.CalledProcessError as e:
-                self._logger.debug("raise error!")
-                self._logger.debug("executed command: {}".format(e.cmd))
-                self._logger.debug("output: {}".format(e.output))
-                error = "Error: an error occured during execution of following command.\n{}\n".format(e.cmd)
-                self.output_errlog(error)
+                error = "an error occured during execution of following command.\n{}".format(e.cmd)
+                self._logger.error(error)
             else:
-                stdout = "mysqldump was executed. backupfile is saved {}".format(exc_cmd[len(exc_cmd) - 1])
-                self.output_logfile(stdout)
-        self.output_logfile(__file__ + ' is ended.')
+                stdout = "mysqldump succeeded. dumpfile is saved {}".format(exc_cmd[len(exc_cmd) - 1])
+                self._logger.info(stdout)
+        self._logger.info("complete backup process.")
 
     def compress_backup(self, del_flag=None):
         """取得したバックアップファイルを圧縮処理にかける.
@@ -282,55 +333,31 @@ class localBackup(object):
             param1 del_flag: 圧縮後、元ファイルを削除するかどうかのフラグ.
                              デフォルトでは削除する.
         """
-        self.output_logfile("start compression.")
+        self._logger.info("start compression.")
         if del_flag is None:
             del_flag = True
         # DBのディレクトリ名を取得.
         dir_list = fileope.get_dir_names(self.bk_dir)
         # gzip圧縮処理
         for dir_name in dir_list:
-            target_dir = '{0}/{1}'.format(self.bk_dir, dir_name)
+            target_dir = fileope.join_path(self.bk_dir, dir_name)
             file_list = fileope.get_file_names(r'{}'.format(target_dir))
             for file_name in file_list:
-                target_file = '{0}/{1}'.format(target_dir, file_name)
+                target_file = fileope.join_path(target_dir, file_name)
                 try:
                     fileope.compress_gz(r'{}'.format(target_file))
                 except OSError as oserr:
-                    error = "Error: {}\n".format(oserr.strerror)
-                    self.output_errlog(error)
-                    self.output_errlog("Error: {} failed to compress.".format(target_file))
+                    error = oserr.strerror
+                    # output error line... "Error: {} failed to compress.".format(target_file))
+                    self._logger.error(error)
                 except ValueError as valerr:
-                    error = "Error: {}\n".format(valerr)
-                    self.output_errlog(error)
-                    self.output_errlog("Error: {} failed to compress.".format(target_file))
+                    error = valerr
+                    # "Error: {} failed to compress.".format(target_file))
+                    self._logger.error(error)
                 else:
-                    stdout = "{}: complete compress.".format(target_file)
-                    self.output_logfile(stdout)
                     if del_flag:
                         fileope.rm_filedir(target_file)
-
-    def output_logfile(self, line: str):
-        """open a log file and write standard output in a log file.
-
-        Args:
-            param1 line: string of standard output
-                type: string
-        """
-        print(line)
-        with open(r"{0}{1}_backup.log".format(self.log_root, self.ymd), 'a') as f:
-            f.write(line)
-
-    def output_errlog(self, line: str):
-        """open a error log file and write standard error output in a error log
-        file.
-
-        Args:
-            param1 line: string of standard error output
-                type: string
-        """
-        print(line)
-        with open(r"{0}{1}_error.log".format(self.errlog_root, self.ymd), 'a') as f:
-            f.write(line)
+        self._logger.info("complete compressing dump files.")
 
     def main(self):
         """main.
@@ -341,8 +368,8 @@ class localBackup(object):
         # 旧バックアップデータの削除.
         self._remove_old_backup()
         # ログファイルの削除.
-        self._remove_old_log(type=1)
-        self._remove_old_log(type=2)
+        #self._remove_old_log(type=1)
+        #self._remove_old_log(type=2)
         # DB名とテーブル名一覧の取得.
         dbs_tables = self.get_dbs_and_tables()
         # 実行するLinuxコマンドを生成.
@@ -351,19 +378,45 @@ class localBackup(object):
         self.do_backup(commands)
         # 圧縮処理
         self.compress_backup()
+
         elapsed_time = time.time() - start
-        print("elapsed time: {}sec.".format(elapsed_time))
+        line = "elapsed time is {0} sec. {1} finished.".format(elapsed_time, __file__)
+        self._logger.info(line)
+        # close
+        self._logger.close()
 
 
 if __name__ == '__main__':
     import argparse
+
+    def parse_json():
+        parse_j = rwfile.ParseJSON()
+        obj_json = {}
+        obj_json = parse_j.load_json(file=CONFIG_PATH)
+        return obj_json
+
+    def set_path(obj_json: dict):
+        # Log file PATH.
+        global log_path, sshconn_info
+        log_path = {"log_root": obj_json['default_path']['LOG_ROOT'],
+                    "errlog_root": obj_json['default_path']['ERRLOG_ROOT']}
+        sshconn_info = {"ssh_host": obj_json['ssh']['hostname'],
+                        "ssh_user": obj_json['ssh']['username'],
+                        "private_key": obj_json['ssh']['private_key'],
+                        "remote_path": obj_json['ssh']['remote_path']}
+
     argparser = argparse.ArgumentParser(description='MySQL backup script.')
-    argparser.add_argument('-l', '--                                                                                                                   loglevel', type=int, required=False,
+    argparser.add_argument('-l', '--loglevel', type=int, required=False,
                            default=30,
-                           help='ログレベルの指定.デフォルトはWARNING. 0,10,20,30...')
+                           help='ログレベルの指定.デフォルトはWARNING. 0,10,20,30...',
+                           '-H', '--handler', type=str, required=False,
+                           default='rotation',
+                           help="settings the handler of log outputed.\n" \
+                                "default handler is 'file'. log is outputed in file.\n" \
+                                 "available value is 'file' | 'console' | 'rotation'")
     args = argparser.parse_args()
 
-    db_backup = localBackup(loglevel=args.loglevel)
+    db_backup = localBackup(loglevel=args.loglevel, handler=args.handler)
     db_backup.main()
 
     # Log file path
@@ -382,20 +435,5 @@ if __name__ == '__main__':
     d_trans.transfer_files(targets=[db_backup.bk_dir],
                            remote_path=sshconn_info["remote_path"])
 
-    def parse_json():
-        parse_j = rwfile.ParseJSON()
-        obj_json = {}
-        obj_json = parse_j.load_json(file=CONFIG_PATH)
-        return obj_json
-
-    def set_path(obj_json: dict):
-        # Log file PATH.
-        global log_path, sshconn_info
-        log_path = {"log_root": obj_json['default_path']['LOG_ROOT'],
-                    "errlog_root": obj_json['default_path']['ERRLOG_ROOT']}
-        sshconn_info = {"ssh_host": obj_json['ssh']['hostname'],
-                        "ssh_user": obj_json['ssh']['username'],
-                        "private_key": obj_json['ssh']['private_key'],
-                        "remote_path": obj_json['ssh']['remote_path']}
 
 

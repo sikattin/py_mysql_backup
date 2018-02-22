@@ -2,8 +2,7 @@
   "default_path": {
     "_comment": "directory path to use backup script.",
     "BK_ROOT": "/data2/backup/",
-    "LOG_ROOT": "/data2/backup/daily_backuplog/",
-    "ERRLOG_ROOT": "/data2/backup/error_log/",
+    "LOG_ROOT": "/var/log/daily_backup",
     "CONFIG_PATH": "/usr/local/etc/daily_backup/config/backup.json"
   },
   "mysql": {

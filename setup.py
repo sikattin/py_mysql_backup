@@ -5,6 +5,13 @@
 from setuptools import setup, find_packages
 import os
 
+requirement = ['py_mysql',
+               'datetime_skt',
+               'osfile',
+               'mylogger',
+               'iomod',
+               'connection',
+               'datatransfer']
 
 with open('README.rst') as f:
     readme = f.read()
@@ -19,6 +26,7 @@ setup(
     long_description=readme,
     author='Takeki Shikano',
     author_email='shikano.takeki@nexon.co.jp',
+    require=requirement,
     url=None,
     license='MIT',
     packages=find_packages(exclude=('tests', 'docs')),
