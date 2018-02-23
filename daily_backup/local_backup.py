@@ -310,7 +310,9 @@ class localBackup(object):
             Returns:
 
         """
-        self._logger.info("backup start. Date: {}".format(self.ymd))
+        statement = "backup start. Date: {}".format(self.ymd)
+        self._logger.info(statement)
+        print(statement)
         for exc_cmd in exc_cmds:
             try:
                 subprocess.check_call(args=' '.join(exc_cmd), shell=True)
@@ -378,6 +380,7 @@ class localBackup(object):
         elapsed_time = time.time() - start
         line = "elapsed time is {0} sec. {1} finished.".format(elapsed_time, __file__)
         self._logger.info(line)
+        print(line)
         # close
         #self._logger.close()
 
@@ -402,7 +405,7 @@ if __name__ == '__main__':
 
     argparser = argparse.ArgumentParser(description='MySQL backup script.')
     argparser.add_argument('-l', '--loglevel', type=int, required=False,
-                           default=30,
+                           default=20,
                            help='ログレベルの指定.デフォルトはWARNING. 0,10,20,30...')
     argparser.add_argument('-H', '--handler', type=str, required=False,
                            default='rotation',
@@ -428,7 +431,7 @@ if __name__ == '__main__':
                            loglevel=args.loglevel)
     d_trans.transfer_files(targets=[db_backup.bk_dir],
                            remote_path=sshconn_info["remote_path"])
-    # close
+    # logger close
     db_backup._logger.close()
 
 

@@ -1,12 +1,11 @@
-Sample Module Repository
+local_backup.py description
 ========================
 
-This simple project is an example repo for Python projects.
+This script is connecting to MySQL server, executes mysqldump and saves dumpfile to specified directory.
+then, transfer dumpfiles to specified remote host.
 
-`Learn more <http://www.kennethreitz.org/essays/repository-structure-and-python>`_.
+config file path is <python3 lib directory>/site|dist-packages/daily_backup/config/backup.json
 
----------------
+run following command to executes this scripts!(must be privileged user)
+python3 <python3 lib directory>/dist-packages/daily_backup/local_backup.py
 
-If you want to learn more about ``setup.py`` files, check out `this repository <https://github.com/kennethreitz/setup.py>`_.
-
-✨🍰✨
