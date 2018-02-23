@@ -21,7 +21,7 @@ with open('LICENSE') as f:
 
 setup(
     name='daily_backup',
-    version='1.2',
+    version='1.4',
     description='MySQL backup script.',
     long_description=readme,
     author='Takeki Shikano',

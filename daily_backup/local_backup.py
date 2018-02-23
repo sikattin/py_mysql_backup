@@ -23,8 +23,6 @@ from mylogger.factory import StdoutLoggerFactory, \
                              RotationLoggerFactory
 # read/write operation to file
 from iomod import rwfile
-# ssh connection
-from connection.sshconn import SSHConn
 # transfer data local to remote
 from datatransfer.datatransfer import DataTransfer
 # python standard modules
@@ -32,12 +30,13 @@ import subprocess
 import time
 
 # base log file name.
-LOGFILE = 'mariadb_dayilybup.log'
+LOGFILE = 'mariadb_dailybup.log'
 # config file name.
 # default config file path is <python lib>/dist|site-packages/daily_backup/config
 CONFIG_FILE = 'backup.json'
 INST_DIR = ''
 CONFIG_PATH = ''
+LOGROTATE_COUNT = 3
 
 class localBackup(object):
     """
@@ -45,10 +44,6 @@ class localBackup(object):
 
     def __new__(cls, loglevel=None, handler=None):
         self = super().__new__(cls)
-
-        if not handler in {'rotation', 'file', 'console'}:
-            raise TypeError("set a valid value to handler arg. you set {}".format(handler))
-
         # JSONファイルから各種データの読み込み、インスタンス変数にセット.
         self.parsed_json = {}
         self._get_pylibdir()
@@ -64,8 +59,9 @@ class localBackup(object):
             loglevel = 20
         if handler is None:
             handler = 'rotation'
-            logrotate_count = 3
         self._handler = handler
+        # ロガーを作る前にログファイル出力のディレクトリをあらかじめ作っておかなければ
+        # エラーが出てしまうので改修予定
         # create file logger.
         if self._handler == 'file':
             filelogger_fac = FileLoggerFactory(loglevel=loglevel)
@@ -77,7 +73,7 @@ class localBackup(object):
         # create rotation logger.
         else:
             rotlogger_fac = RotationLoggerFactory(loglevel=loglevel)
-            self._logger = rotlogger_fac.create(file=self.logfile, bcount=logrotate_count)
+            self._logger = rotlogger_fac.create(file=self.logfile, bcount=LOGROTATE_COUNT)
 
         self.date_arith = dateArithmetic()
         self.year = self.date_arith.get_year()
@@ -383,7 +379,7 @@ class localBackup(object):
         line = "elapsed time is {0} sec. {1} finished.".format(elapsed_time, __file__)
         self._logger.info(line)
         # close
-        self._logger.close()
+        #self._logger.close()
 
 
 if __name__ == '__main__':
@@ -398,8 +394,7 @@ if __name__ == '__main__':
     def set_path(obj_json: dict):
         # Log file PATH.
         global log_path, sshconn_info
-        log_path = {"log_root": obj_json['default_path']['LOG_ROOT'],
-                    "errlog_root": obj_json['default_path']['ERRLOG_ROOT']}
+        log_path = {"log_root": obj_json['default_path']['LOG_ROOT']}
         sshconn_info = {"ssh_host": obj_json['ssh']['hostname'],
                         "ssh_user": obj_json['ssh']['username'],
                         "private_key": obj_json['ssh']['private_key'],
@@ -408,11 +403,11 @@ if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description='MySQL backup script.')
     argparser.add_argument('-l', '--loglevel', type=int, required=False,
                            default=30,
-                           help='ログレベルの指定.デフォルトはWARNING. 0,10,20,30...',
-                           '-H', '--handler', type=str, required=False,
+                           help='ログレベルの指定.デフォルトはWARNING. 0,10,20,30...')
+    argparser.add_argument('-H', '--handler', type=str, required=False,
                            default='rotation',
                            help="settings the handler of log outputed.\n" \
-                                "default handler is 'file'. log is outputed in file.\n" \
+                                "default handler is 'rotation'. log is outputed in file.\n" \
                                  "available value is 'file' | 'console' | 'rotation'")
     args = argparser.parse_args()
 
@@ -429,11 +424,12 @@ if __name__ == '__main__':
     d_trans = DataTransfer(hostname=sshconn_info["ssh_host"],
                            username=sshconn_info["ssh_user"],
                            keyfile_path=sshconn_info["private_key"],
-                           logpath=db_backup.log_root[:-1],
-                           errlog_path=db_backup.errlog_root[:-1],
+                           logger=db_backup._logger,
                            loglevel=args.loglevel)
     d_trans.transfer_files(targets=[db_backup.bk_dir],
                            remote_path=sshconn_info["remote_path"])
+    # close
+    db_backup._logger.close()
 
 
 
