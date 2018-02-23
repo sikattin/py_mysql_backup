@@ -40,7 +40,7 @@ setup(
     url=None,
     license='MIT',
     packages=find_packages(exclude=('tests', 'docs')),
-    package_data={'daily_backup': ['config/backup.json']}
+    package_data={'daily_backup': ['config/backup.json', 'README']}
 )
 
 

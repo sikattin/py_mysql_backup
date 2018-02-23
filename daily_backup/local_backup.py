@@ -406,10 +406,17 @@ if __name__ == '__main__':
     with open('README') as f:
         description = f.read()
 
-    argparser = argparse.ArgumentParser(description=description)
+    epilog = 'example command.\n' \
+             '`python3 local_backup.py` ... log is outputted to specified file. log level is INFO.\n' \
+             '`python3 local_backup.py --loglevel 30 --handler console` ... log is outputted to console.\n' \
+             'log level is WARNING'
+
+    argparser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
+                                        description=description)
     argparser.add_argument('-l', '--loglevel', type=int, required=False,
                            default=20,
-                           help='ログレベルの指定.デフォルトはWARNING. 0,10,20,30...')
+                           help='log level. need to set int value 10 ~ 50.\n' \
+                           'default is INFO. 10:DEBUG, 20:INFO, 30:WARNING, 40:ERROR, 50:CRITICAL')
     argparser.add_argument('-H', '--handler', type=str, required=False,
                            default='rotation',
                            help="settings the handler of log outputed.\n" \
