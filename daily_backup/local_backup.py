@@ -403,7 +403,10 @@ if __name__ == '__main__':
                         "private_key": obj_json['ssh']['private_key'],
                         "remote_path": obj_json['ssh']['remote_path']}
 
-    argparser = argparse.ArgumentParser(description='MySQL backup script.')
+    with open('README') as f:
+        description = f.read()
+
+    argparser = argparse.ArgumentParser(description=description)
     argparser.add_argument('-l', '--loglevel', type=int, required=False,
                            default=20,
                            help='ログレベルの指定.デフォルトはWARNING. 0,10,20,30...')

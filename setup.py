@@ -12,6 +12,16 @@ requirement = ['py_mysql',
                'iomod',
                'connection',
                'datatransfer']
+description = 'MySQL Backup Script.\n' \
+              '================================================' \
+              'This script is connecting to MySQL server, ' \
+              'executes mysqldump and saves dumpfile to specified directory.\n' \
+              'then, transfer dumpfiles to specified remote host.\n' \
+              'config file path is ' \
+              '<python3 lib directory>/site|dist-packages/daily_backup/config/backup.json\n' \
+              'run following command to executes this scripts!(must be privileged user)\n' \
+              'python3 <python3 lib directory>/dist-packages/daily_backup/local_backup.py'
+
 
 with open('README.rst') as f:
     readme = f.read()
@@ -22,7 +32,7 @@ with open('LICENSE') as f:
 setup(
     name='daily_backup',
     version='1.4',
-    description='MySQL backup script.',
+    description=description,
     long_description=readme,
     author='Takeki Shikano',
     author_email='shikano.takeki@nexon.co.jp',
