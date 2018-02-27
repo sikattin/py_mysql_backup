@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 #-------------------------------------------------------------------------------
 # Name:        local_backup.py
 # Purpose:     for daily backup mysql.
@@ -26,6 +27,7 @@ from iomod import rwfile
 # transfer data local to remote
 from datatransfer.datatransfer import DataTransfer
 # python standard modules
+from os.path import split
 import subprocess
 import time
 
@@ -90,8 +92,8 @@ class localBackup(object):
             import daily_backup
 
             global INST_DIR, CONFIG_PATH
-            INST_DIR = daily_backup.__path__
-            CONFIG_PATH = "{0}/config/{1}".format(INST_DIR[0], CONFIG_FILE)
+            INST_DIR = split(daily_backup.__file__)[0]
+            CONFIG_PATH = "{0}/config/{1}".format(INST_DIR, CONFIG_FILE)
 
     def _load_json(self):
         """jsonファイルをパースする."""
@@ -289,7 +291,7 @@ class localBackup(object):
                                                            self.ymd,
                                                            table)
                 mysqldump_cmd = (
-                                "mysqldump -u{0} -p{1} -q --skip-opt -R {2} {3} > "
+                                "mysqldump -u{0} -p{1} -q --skip-opt {2} {3} > "
                                 "{4}".format(self.myuser,
                                              self._decrypt_string(self.mypass),
                                              db,
@@ -298,7 +300,13 @@ class localBackup(object):
                                 )
                 split_cmd = mysqldump_cmd.split()
                 cmds += (split_cmd,)
-
+            # get a dump only SP.
+            spdump_path = "{0}/{1}_{2}SP.sql".format(self.bk_dir, self.ymd, db)
+            mysqldump_sp = "mysqldump -u{0} -p{1} --routines --no-data " \
+                           "--no-create-info {2} > {3}".format(self.myuser,
+                                                               self._decrypt_string(self.mypass),
+                                                               db,
+                                                               spdump_path)
         return cmds
 
     def do_backup(self, exc_cmds: tuple):
@@ -383,10 +391,12 @@ class localBackup(object):
         print(line)
         # close
         #self._logger.close()
+        # 転送先の定期的なファイル削除処理と転送元のzipファイルを削除する。
 
 
 if __name__ == '__main__':
     import argparse
+    import daily_backup
 
     def parse_json():
         parse_j = rwfile.ParseJSON()
@@ -403,16 +413,18 @@ if __name__ == '__main__':
                         "private_key": obj_json['ssh']['private_key'],
                         "remote_path": obj_json['ssh']['remote_path']}
 
-    with open('README') as f:
+    lib_dir = split(daily_backup.__file__)[0]
+    with open(fileope.join_path(lib_dir, 'README')) as f:
         description = f.read()
 
-    epilog = 'example command.\n' \
+    epilog = 'example command.\n\n' \
              '`python3 local_backup.py` ... log is outputted to specified file. log level is INFO.\n' \
-             '`python3 local_backup.py --loglevel 30 --handler console` ... log is outputted to console.\n' \
+             '`python3 local_backup.py --loglevel 30 --handler console` ... log is outputted to console.' \
              'log level is WARNING'
 
     argparser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
-                                        description=description)
+                                        description=description,
+                                        epilog=epilog)
     argparser.add_argument('-l', '--loglevel', type=int, required=False,
                            default=20,
                            help='log level. need to set int value 10 ~ 50.\n' \
@@ -440,7 +452,8 @@ if __name__ == '__main__':
                            logger=db_backup._logger,
                            loglevel=args.loglevel)
     d_trans.transfer_files(targets=[db_backup.bk_dir],
-                           remote_path=sshconn_info["remote_path"])
+                           remote_path=sshconn_info["remote_path"],
+                           delete=True)
     # logger close
     db_backup._logger.close()
 
