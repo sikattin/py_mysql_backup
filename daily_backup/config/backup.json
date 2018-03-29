@@ -2,8 +2,7 @@
   "default_path": {
     "_comment": "directory path to use backup script.",
     "BK_ROOT": "/data2/backup/",
-    "LOG_ROOT": "/var/log/daily_backup",
-    "CONFIG_PATH": "/usr/local/etc/daily_backup/config/backup.json"
+    "LOG_ROOT": "/var/log/daily_backup"
   },
   "mysql": {
     "_comment": "necessary account information when connecting to mysql.",
@@ -15,9 +14,14 @@
   },
   "ssh": {
     "_comment": "necessary account info when connecting to remote host.",
+    "Enabled": 1
     "hostname": "172.16.30.30",
     "username": "Nxj_ToS_TS1",
     "private_key": "/home/Nxj_ToS_TS1/.ssh/id_rsa",
-    "remote_path": "/data/MariaDB_Backup" 
+    "remote_path": "/home/Nxj_ToS_TS1/backup/world5" 
+  },
+  "log": {
+    "_comment": "log settings",
+    "backup_count": 3
   }
 }

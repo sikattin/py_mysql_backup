@@ -38,7 +38,6 @@ LOGFILE = 'mariadb_dailybup.log'
 CONFIG_FILE = 'backup.json'
 INST_DIR = ''
 CONFIG_PATH = ''
-LOGROTATE_COUNT = 3
 
 class localBackup(object):
     """
@@ -75,7 +74,7 @@ class localBackup(object):
         # create rotation logger.
         else:
             rotlogger_fac = RotationLoggerFactory(loglevel=loglevel)
-            self._logger = rotlogger_fac.create(file=self.logfile, bcount=LOGROTATE_COUNT)
+            self._logger = rotlogger_fac.create(file=self.logfile, bcount=self.b_count)
 
         self.date_arith = dateArithmetic()
         self.year = self.date_arith.get_year()
@@ -106,7 +105,6 @@ class localBackup(object):
         self.bk_root = self.parsed_json['default_path']['BK_ROOT']
         self.log_root = self.parsed_json['default_path']['LOG_ROOT']
         self.log_file = os.path.join(self.log_root, LOGFILE)
-        self.config_path = self.parsed_json['default_path']['CONFIG_PATH']
 
         # MYSQL
         self.myuser = self.parsed_json['mysql']['MYSQL_USER']
@@ -114,6 +112,9 @@ class localBackup(object):
         self.mydb = self.parsed_json['mysql']['MYSQL_DB']
         self.myhost = self.parsed_json['mysql']['MYSQL_HOST']
         self.myport = self.parsed_json['mysql']['MYSQL_PORT']
+
+        # Log
+        self.b_count = self.parsed_json['log']['backup_count']
 
     def _decrypt_string(self, line: str):
         import codecs
@@ -144,7 +145,8 @@ class localBackup(object):
             # 日毎のバックアップディレクトリがひとつも存在しない場合は
             # 月毎のバックアップディレクトリ自体を削除する.
             if len(daily_bkdirs) == 0:
-                fileope.remove_dir(monthly_bkdir)
+                fileope.f_remove_dirs(monthly_bkdir)
+                self._logger.info("Delete old backup directory. {}".format(monthly_bkdir))
                 continue
             for daily_bkdir in daily_bkdirs:
                 # 現在の日付と対象となるディレクトリのタイムスタンプの日数差を計算する.
@@ -291,7 +293,8 @@ class localBackup(object):
                                                            self.ymd,
                                                            table)
                 mysqldump_cmd = (
-                                "mysqldump -u{0} -p{1} -q --skip-opt {2} {3} > "
+                                "mysqldump -u{0} -p{1} -q --skip-add-locks " \
+                                "--skip-disable-keys --skip-lock-tables {2} {3} > " \
                                 "{4}".format(self.myuser,
                                              self._decrypt_string(self.mypass),
                                              db,
@@ -302,11 +305,13 @@ class localBackup(object):
                 cmds += (split_cmd,)
             # get a dump only SP.
             spdump_path = "{0}/{1}_{2}SP.sql".format(self.bk_dir, self.ymd, db)
-            mysqldump_sp = "mysqldump -u{0} -p{1} --routines --no-data " \
-                           "--no-create-info {2} > {3}".format(self.myuser,
+            mysqldump_sp = "mysqldump -u{0} -p{1} -q --routines --no-data " \
+                           "--no-create-info --skip-add-locks --skip-disable-keys " \
+                           "--skip-lock-tables {2} > {3}".format(self.myuser,
                                                                self._decrypt_string(self.mypass),
                                                                db,
                                                                spdump_path)
+            cmds += (mysqldump_sp.split(),)
         return cmds
 
     def do_backup(self, exc_cmds: tuple):
@@ -408,7 +413,8 @@ if __name__ == '__main__':
         # Log file PATH.
         global log_path, sshconn_info
         log_path = {"log_root": obj_json['default_path']['LOG_ROOT']}
-        sshconn_info = {"ssh_host": obj_json['ssh']['hostname'],
+        sshconn_info = {"Enabled": obj_json['ssh']['Enabled'],
+                        "ssh_host": obj_json['ssh']['hostname'],
                         "ssh_user": obj_json['ssh']['username'],
                         "private_key": obj_json['ssh']['private_key'],
                         "remote_path": obj_json['ssh']['remote_path']}
@@ -433,7 +439,7 @@ if __name__ == '__main__':
                            default='rotation',
                            help="settings the handler of log outputed.\n" \
                                 "default handler is 'rotation'. log is outputed in file.\n" \
-                                 "available value is 'file' | 'console' | 'rotation'")
+                                 "a valid value is 'file' | 'console' | 'rotation'")
     args = argparser.parse_args()
 
     db_backup = localBackup(loglevel=args.loglevel, handler=args.handler)
@@ -446,14 +452,15 @@ if __name__ == '__main__':
     json_dict = parse_json()
     set_path(json_dict)
 
-    d_trans = DataTransfer(hostname=sshconn_info["ssh_host"],
-                           username=sshconn_info["ssh_user"],
-                           keyfile_path=sshconn_info["private_key"],
-                           logger=db_backup._logger,
-                           loglevel=args.loglevel)
-    d_trans.transfer_files(targets=[db_backup.bk_dir],
-                           remote_path=sshconn_info["remote_path"],
-                           delete=True)
+    if sshconn_info["Enabled"]:
+        d_trans = DataTransfer(hostname=sshconn_info["ssh_host"],
+                               username=sshconn_info["ssh_user"],
+                               keyfile_path=sshconn_info["private_key"],
+                               logger=db_backup._logger,
+                               loglevel=args.loglevel)
+        d_trans.transfer_files(targets=[db_backup.bk_dir],
+                               remote_path=sshconn_info["remote_path"],
+                               delete=True)
     # logger close
     db_backup._logger.close()
 
