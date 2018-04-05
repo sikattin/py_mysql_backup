@@ -15,7 +15,7 @@
   "ssh": {
     "_comment": "necessary account info when connecting to remote host.",
     "Enabled": 1
-    "hostname": "172.16.30.30",
+    "hostname": ["172.16.30.30"],
     "username": "Nxj_ToS_TS1",
     "private_key": "/home/Nxj_ToS_TS1/.ssh/id_rsa",
     "remote_path": "/home/Nxj_ToS_TS1/backup/world5" 

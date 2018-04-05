@@ -27,7 +27,7 @@ from iomod import rwfile
 # transfer data local to remote
 from datatransfer.datatransfer import DataTransfer
 # python standard modules
-from os.path import split
+from os.path import split, join
 import subprocess
 import time
 
@@ -83,7 +83,8 @@ class localBackup(object):
         self.ym = "{0}{1}".format(self.year, self.month)
         self.md = "{0}{1}".format(self.month, self.day)
         self.ymd = "{0}{1}{2}".format(self.year, self.month, self.day)
-        self.bk_dir = "{0}{1}/{2}".format(self.bk_root, self.ym, self.md)
+        self.bk_dir = join(self.bk_root, self.ym)
+        self.bk_dir = join(self.bk_dir, self.md)
 
         return self
 
@@ -140,7 +141,7 @@ class localBackup(object):
             if not self.rwfile.is_matched(line=dir_name, search_objs=['^[0-9]{6}$']):
                 continue
             # 日毎のバックアップディレクトリ名一覧の取得.
-            monthly_bkdir = "{0}{1}".format(self.bk_root, dir_name)
+            monthly_bkdir = join(self.bk_root, dir_name)
             daily_bkdirs = fileope.get_dir_names(dir_path=monthly_bkdir)
             # 日毎のバックアップディレクトリがひとつも存在しない場合は
             # 月毎のバックアップディレクトリ自体を削除する.
@@ -418,6 +419,8 @@ if __name__ == '__main__':
                         "ssh_user": obj_json['ssh']['username'],
                         "private_key": obj_json['ssh']['private_key'],
                         "remote_path": obj_json['ssh']['remote_path']}
+        if not isinstance(sshconn_info["ssh_host"], list):
+            sshconn_info["ssh_host"] = [sshconn_info["ssh_host"]]
 
     lib_dir = split(daily_backup.__file__)[0]
     with open(fileope.join_path(lib_dir, 'README')) as f:
@@ -453,14 +456,15 @@ if __name__ == '__main__':
     set_path(json_dict)
 
     if sshconn_info["Enabled"]:
-        d_trans = DataTransfer(hostname=sshconn_info["ssh_host"],
-                               username=sshconn_info["ssh_user"],
-                               keyfile_path=sshconn_info["private_key"],
-                               logger=db_backup._logger,
-                               loglevel=args.loglevel)
-        d_trans.transfer_files(targets=[db_backup.bk_dir],
-                               remote_path=sshconn_info["remote_path"],
-                               delete=True)
+        for host in sshconn_info["ssh_host"]:
+            d_trans = DataTransfer(hostname=host,
+                                   username=sshconn_info["ssh_user"],
+                                   keyfile_path=sshconn_info["private_key"],
+                                   logger=db_backup._logger,
+                                   loglevel=args.loglevel)
+            d_trans.transfer_files(targets=[db_backup.bk_dir],
+                                   remote_path=sshconn_info["remote_path"],
+                                   delete=True)
     # logger close
     db_backup._logger.close()
 
