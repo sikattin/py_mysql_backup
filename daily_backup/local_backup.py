@@ -294,7 +294,7 @@ class localBackup(object):
                                                            self.ymd,
                                                            table)
                 mysqldump_cmd = (
-                                "mysqldump -u{0} -p{1} -q --skip-add-locks " \
+                                "mysqldump -u{0} -p'{1}' -q --skip-add-locks " \
                                 "--skip-disable-keys --skip-lock-tables {2} {3} > " \
                                 "{4}".format(self.myuser,
                                              self._decrypt_string(self.mypass),
@@ -306,7 +306,7 @@ class localBackup(object):
                 cmds += (split_cmd,)
             # get a dump only SP.
             spdump_path = "{0}/{1}_{2}SP.sql".format(self.bk_dir, self.ymd, db)
-            mysqldump_sp = "mysqldump -u{0} -p{1} -q --routines --no-data " \
+            mysqldump_sp = "mysqldump -u{0} -p'{1}' -q --routines --no-data " \
                            "--no-create-info --skip-add-locks --skip-disable-keys " \
                            "--skip-lock-tables {2} > {3}".format(self.myuser,
                                                                self._decrypt_string(self.mypass),
