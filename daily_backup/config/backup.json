@@ -2,7 +2,9 @@
   "default_path": {
     "_comment": "directory path to use backup script.",
     "BK_ROOT": "/data2/backup/",
-    "LOG_ROOT": "/var/log/daily_backup"
+    "LOG_ROOT": "/var/log/daily_backup",
+    "KEY_PATH": "/home/Nxj_ToS_TS1/.ssh/id_rsa",
+    "CRED_PATH": "/usr/local/lib/python3.4/dist-packages/mysqlbackup/config/credential.enc"
   },
   "mysql": {
     "_comment": "necessary account information when connecting to mysql.",

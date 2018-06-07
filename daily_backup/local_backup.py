@@ -109,6 +109,8 @@ class localBackup(object):
         self.bk_root = self.parsed_json['default_path']['BK_ROOT']
         self.log_root = self.parsed_json['default_path']['LOG_ROOT']
         self.log_file = os.path.join(self.log_root, LOGFILE)
+        self.key_path = self.parsed_json['default_path']['KEY_PATH']
+        self.cred_path = self.parsed_json['default_path']['CRED_PATH']
 
         # MYSQL
         self.myuser = self.parsed_json['mysql']['MYSQL_USER']
@@ -125,6 +127,23 @@ class localBackup(object):
 
         decrypted = codecs.decode(line, 'rot_13')
         return decrypted
+
+    def _decrypt_credentialfile(self):
+        cmd_decrypt = 'openssl rsautl -decrypt' \
+                                      ' -inkey {key_path}' \
+                                      ' -in {file_path}}'.format(key_path=self.key_path,
+                                                                 file_path=self.cred_path)
+        try:
+            result = subprocess.check_output(args=cmd_decrypt, shell=True)
+        except subprocess.CalledProcessError as e:
+            self._logger.error("Failed to decrypt credential file." \
+                                "check {0} and {1} exists".format(self.cred_path,
+                                                                  self.key_path))
+            self._logger.error(e.output)
+            raise e
+        else:
+            result = (result.decode()).rstrip()
+            return result
 
     def _remove_old_backup(self, preserved_day=None):
         """旧バックアップデータを削除する.
