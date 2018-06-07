@@ -31,6 +31,9 @@ from os.path import split, join
 import subprocess
 import time
 
+DUMP_OPTS = '--quick --quote-names'
+DUMP_SP_OPTS = '--quote-names --routine --no-data --no-create-info'
+FULLDUMP_OPTS = '--quote-names --lock-all-tables --all-databases --events --routine'
 # base log file name.
 LOGFILE = 'mariadb_dailybup.log'
 # config file name.
@@ -275,6 +278,34 @@ class localBackup(object):
         self._logger.info("succeeded acquireing database names.")
         return results
 
+    def stop_slave(self):
+        """Stop DB reeplication."""
+        with MySQLDB(host=self.myhost,
+                     dst_db=self.mydb,
+                     myuser=self.myuser,
+                     mypass=self._decrypt_string(self.mypass),
+                     port=self.myport) as mysqldb:
+            self._logger.info("Stop Slave.")
+            sql = mysqldb.escape_statement("STOP SLAVE;")
+            try:
+                mysqldb.execute_sql(sql)
+            except:
+                self._logger.info("Not Replication environment. stop slave is not run.")
+
+    def start_slave(self):
+        """Start DB reeplication."""
+        with MySQLDB(host=self.myhost,
+                     dst_db=self.mydb,
+                     myuser=self.myuser,
+                     mypass=self._decrypt_string(self.mypass),
+                     port=self.myport) as mysqldb:
+            self._logger.info("Start Slave.")
+            sql = mysqldb.escape_statement("START SLAVE;")
+            try:
+                mysqldb.execute_sql(sql)
+            except:
+                self._logger.info("Not Replication environment. start slave is not run.")
+
     def mk_cmd(self, params):
         """実行するLinuxコマンドを成形する.
 
@@ -286,6 +317,7 @@ class localBackup(object):
         """
         self._logger.info("creating mysql dump command...")
         cmds = tuple()
+        fulldump_cmd = ''
         for db, tables in params.items():
             for table in tables:
                 self._logger.debug(table)
@@ -294,10 +326,10 @@ class localBackup(object):
                                                            self.ymd,
                                                            table)
                 mysqldump_cmd = (
-                                "mysqldump -u{0} -p'{1}' -q --skip-add-locks " \
-                                "--skip-disable-keys --skip-lock-tables {2} {3} > " \
-                                "{4}".format(self.myuser,
+                                "mysqldump -u{0} -p'{1}' {2} {3} {4} > " \
+                                "{5}".format(self.myuser,
                                              self._decrypt_string(self.mypass),
+                                             DUMP_OPTS,
                                              db,
                                              table,
                                              output_path)
@@ -306,10 +338,9 @@ class localBackup(object):
                 cmds += (split_cmd,)
             # get a dump only SP.
             spdump_path = "{0}/{1}_{2}SP.sql".format(self.bk_dir, self.ymd, db)
-            mysqldump_sp = "mysqldump -u{0} -p'{1}' -q --routines --no-data " \
-                           "--no-create-info --skip-add-locks --skip-disable-keys " \
-                           "--skip-lock-tables {2} > {3}".format(self.myuser,
+            mysqldump_sp = "mysqldump -u{0} -p'{1}' {2} {3} > {4}".format(self.myuser,
                                                                self._decrypt_string(self.mypass),
+                                                               DUMP_SP_OPTS,
                                                                db,
                                                                spdump_path)
             cmds += (mysqldump_sp.split(),)
@@ -386,8 +417,13 @@ class localBackup(object):
         dbs_tables = self.get_dbs_and_tables()
         # 実行するLinuxコマンドを生成.
         commands = self.mk_cmd(params=dbs_tables)
+        # stop replication
+        self.stop_slave()
         # mysqldumpの実行.
         self.do_backup(commands)
+        
+        # start replication.
+        self.start_slave()
         # 圧縮処理
         self.compress_backup()
 
