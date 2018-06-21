@@ -268,60 +268,79 @@ class localBackup(object):
                 {'db1': (db1_table1, db1_table2, ...), 'db2': (db2_table1, ...)}
         """
         results = {}
-        # MySQLに接続する.
-        with MySQLDB(host=self.myhost,
-                     dst_db=self.mydb,
-                     myuser=self.myuser,
-                     mypass=self._decrypt_credentialfile(),
-                     port=self.myport) as mysqldb:
-            # SHOW DATABASES;
-            self._logger.info("Database names now acquireing...")
-            sql = mysqldb.escape_statement("SHOW DATABASES;")
-            cur_showdb = mysqldb.execute_sql(sql)
-            for db_name in cur_showdb.fetchall():
-                for db_str in db_name:
-                    # information_schema と peformance_schema DBはバックアップ対象から除外.
-                    if db_str.lower() in {'information_schema', 'performance_schema'}:
-                        continue
-                    # DBに接続する.
-                    mysqldb.change_database(db_str)
-                    # SHOW TABLES;
-                    sql = mysqldb.escape_statement("SHOW TABLES;")
-                    cur_showtb = mysqldb.execute_sql(sql)
-                    for table_name in cur_showtb.fetchall():
-                        for table_str in table_name:
-                            # 辞書にキーとバリューの追加.
-                            results.setdefault(db_str, []).append(table_str)
-        self._logger.info("succeeded acquireing database names.")
-        return results
+        try:
+            # MySQLに接続する.
+            with MySQLDB(host=self.myhost,
+                         dst_db=self.mydb,
+                         myuser=self.myuser,
+                         mypass=self._decrypt_credentialfile(),
+                         port=self.myport) as mysqldb:
+                # SHOW DATABASES;
+                self._logger.info("Database names now acquireing...")
+                sql = mysqldb.escape_statement("SHOW DATABASES;")
+                cur_showdb = mysqldb.execute_sql(sql)
+                for db_name in cur_showdb.fetchall():
+                    for db_str in db_name:
+                        # information_schema と peformance_schema DBはバックアップ対象から除外.
+                        if db_str.lower() in {'information_schema', 'performance_schema'}:
+                            continue
+                        # DBに接続する.
+                        mysqldb.change_database(db_str)
+                        # SHOW TABLES;
+                        sql = mysqldb.escape_statement("SHOW TABLES;")
+                        cur_showtb = mysqldb.execute_sql(sql)
+                        for table_name in cur_showtb.fetchall():
+                            for table_str in table_name:
+                                # 辞書にキーとバリューの追加.
+                                results.setdefault(db_str, []).append(table_str)
+        except:
+            print("Failed to connect MySQL server.Please checking MYSQL section of configuration file " \
+                  "{}".format(CONFIG_PATH))
+            self._logger.error("Failed to connect MySQL server.")
+            raise
+        else:
+            self._logger.info("succeeded acquireing database names.")
+            return results
 
     def stop_slave(self):
         """Stop DB reeplication."""
-        with MySQLDB(host=self.myhost,
-                     dst_db=self.mydb,
-                     myuser=self.myuser,
-                     mypass=self._decrypt_credentialfile(),
-                     port=self.myport) as mysqldb:
-            self._logger.info("Stop Slave.")
-            sql = mysqldb.escape_statement("STOP SLAVE;")
-            try:
-                mysqldb.execute_sql(sql)
-            except:
-                self._logger.info("Not Replication environment. stop slave is not run.")
+        try:
+            with MySQLDB(host=self.myhost,
+                         dst_db=self.mydb,
+                         myuser=self.myuser,
+                         mypass=self._decrypt_credentialfile(),
+                         port=self.myport) as mysqldb:
+                self._logger.info("Stop Slave.")
+                sql = mysqldb.escape_statement("STOP SLAVE;")
+                try:
+                    mysqldb.execute_sql(sql)
+                except:
+                    self._logger.info("Not Replication environment. stop slave is not run.")
+        except:
+            print("Failed to connect MySQL server.Please checking MYSQL section of configuration file " \
+                  "{}".format(CONFIG_PATH))
+            self._logger.error("Failed to connect MySQL server.")
+            raise
 
     def start_slave(self):
         """Start DB reeplication."""
-        with MySQLDB(host=self.myhost,
-                     dst_db=self.mydb,
-                     myuser=self.myuser,
-                     mypass=self._decrypt_credentialfile(),
-                     port=self.myport) as mysqldb:
-            self._logger.info("Start Slave.")
-            sql = mysqldb.escape_statement("START SLAVE;")
-            try:
-                mysqldb.execute_sql(sql)
-            except:
-                self._logger.info("Not Replication environment. start slave is not run.")
+        try:
+            with MySQLDB(host=self.myhost,
+                         dst_db=self.mydb,
+                         myuser=self.myuser,
+                         mypass=self._decrypt_credentialfile(),
+                         port=self.myport) as mysqldb:
+                self._logger.info("Start Slave.")
+                sql = mysqldb.escape_statement("START SLAVE;")
+                try:
+                    mysqldb.execute_sql(sql)
+                except:
+                    self._logger.info("Not Replication environment. start slave is not run.")
+        except:
+            print("Failed to connect MySQL server.Please checking MYSQL section of configuration file " \
+                  "{}".format(CONFIG_PATH))
+            self._logger.error("Failed to connect MySQL server.")
+            raise
 
     def mk_cmd(self, params):
         """実行するLinuxコマンドを成形する.
@@ -520,6 +539,3 @@ if __name__ == '__main__':
                                    delete=True)
     # logger close
     db_backup._logger.close()
-
-
-

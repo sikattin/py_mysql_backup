@@ -22,6 +22,7 @@ from getpass import getpass
 
 CRED_FILENAME = 'credential.enc'
 TMPFILE_PATH = '/tmp/tmp_forpyscript'
+TIMEOUT_SEC = 10
 
 def _get_packagedir():
     import daily_backup
@@ -34,14 +35,25 @@ def _encrypt(key_path: str, target_str: str, outfile_path: str):
         cmd_encrypt = "openssl rsautl -encrypt -inkey {0} -in {1}".format(key_path,
                                                                    TMPFILE_PATH)
         try:    
-            subprocess.Popen(shlex.split(cmd_encrypt), stdout=f)
+            popen_obj = subprocess.Popen(shlex.split(cmd_encrypt), stdout=f)
+        except OSError as os_e:
+            print("Credentialファイルの暗号化に失敗しました。")
+            raise os_e
+        except ValueError as val_e:
+            print("不正な引数です。")
+            raise val_e
+        except  subprocess.SubprocessError as subp_e:
+            raise subp_e
         except:
             print("Credentialファイルの暗号化に失敗しました。")
             print("暗号化に使用されたコマンド: {}".format(cmd_encrypt))
             raise
         else:
-            # テスト用の戻り値
-            return True
+            # wait until the process executing command finish. 
+            ret_code = popen_obj.wait(timeout=TIMEOUT_SEC)
+            if ret_code == 0:
+                # テスト用の戻り値
+                return True
         finally:
             f.close()
             remove(TMPFILE_PATH)
