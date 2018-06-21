@@ -31,7 +31,7 @@ with open('LICENSE') as f:
 
 setup(
     name='daily_backup',
-    version='1.4',
+    version='1.5',
     description=description,
     long_description=readme,
     author='Takeki Shikano',

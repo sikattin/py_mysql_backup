@@ -33,7 +33,7 @@ import time
 
 DUMP_OPTS = '--quick --quote-names'
 DUMP_SP_OPTS = '--quote-names --routine --no-data --no-create-info'
-FULLDUMP_OPTS = '--quote-names --lock-all-tables --all-databases --events --routine'
+FULLDUMP_OPTS = '--quote-names --skip-lock-tables --single-transaction --events --routine'
 # base log file name.
 LOGFILE = 'mariadb_dailybup.log'
 # config file name.
@@ -114,7 +114,6 @@ class localBackup(object):
 
         # MYSQL
         self.myuser = self.parsed_json['mysql']['MYSQL_USER']
-        self.mypass = self.parsed_json['mysql']['MYSQL_PASSWORD']
         self.mydb = self.parsed_json['mysql']['MYSQL_DB']
         self.myhost = self.parsed_json['mysql']['MYSQL_HOST']
         self.myport = self.parsed_json['mysql']['MYSQL_PORT']
@@ -129,10 +128,9 @@ class localBackup(object):
         return decrypted
 
     def _decrypt_credentialfile(self):
-        cmd_decrypt = 'openssl rsautl -decrypt' \
-                                      ' -inkey {key_path}' \
-                                      ' -in {file_path}}'.format(key_path=self.key_path,
-                                                                 file_path=self.cred_path)
+        cmd_decrypt = 'openssl rsautl -decrypt -inkey {key_path} -in {file_path}'.format(
+                           key_path=self.key_path,
+                           file_path=self.cred_path)
         try:
             result = subprocess.check_output(args=cmd_decrypt, shell=True)
         except subprocess.CalledProcessError as e:
@@ -274,7 +272,7 @@ class localBackup(object):
         with MySQLDB(host=self.myhost,
                      dst_db=self.mydb,
                      myuser=self.myuser,
-                     mypass=self._decrypt_string(self.mypass),
+                     mypass=self._decrypt_credentialfile(),
                      port=self.myport) as mysqldb:
             # SHOW DATABASES;
             self._logger.info("Database names now acquireing...")
@@ -302,7 +300,7 @@ class localBackup(object):
         with MySQLDB(host=self.myhost,
                      dst_db=self.mydb,
                      myuser=self.myuser,
-                     mypass=self._decrypt_string(self.mypass),
+                     mypass=self._decrypt_credentialfile(),
                      port=self.myport) as mysqldb:
             self._logger.info("Stop Slave.")
             sql = mysqldb.escape_statement("STOP SLAVE;")
@@ -316,7 +314,7 @@ class localBackup(object):
         with MySQLDB(host=self.myhost,
                      dst_db=self.mydb,
                      myuser=self.myuser,
-                     mypass=self._decrypt_string(self.mypass),
+                     mypass=self._decrypt_credentialfile(),
                      port=self.myport) as mysqldb:
             self._logger.info("Start Slave.")
             sql = mysqldb.escape_statement("START SLAVE;")
@@ -347,8 +345,8 @@ class localBackup(object):
                 mysqldump_cmd = (
                                 "mysqldump -u{0} -p'{1}' {2} {3} {4} > " \
                                 "{5}".format(self.myuser,
-                                             self._decrypt_string(self.mypass),
-                                             DUMP_OPTS,
+                                             self._decrypt_credentialfile(),
+                                             FULLDUMP_OPTS,
                                              db,
                                              table,
                                              output_path)
@@ -358,7 +356,7 @@ class localBackup(object):
             # get a dump only SP.
             spdump_path = "{0}/{1}_{2}SP.sql".format(self.bk_dir, self.ymd, db)
             mysqldump_sp = "mysqldump -u{0} -p'{1}' {2} {3} > {4}".format(self.myuser,
-                                                               self._decrypt_string(self.mypass),
+                                                               self._decrypt_credentialfile(),
                                                                DUMP_SP_OPTS,
                                                                db,
                                                                spdump_path)
