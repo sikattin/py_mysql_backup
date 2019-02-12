@@ -29,7 +29,7 @@ def _get_packagedir():
 def _parse_json():
     pj = rwfile.ParseJSON()
     # make path
-    package_confdirpath = join(_get_packagedir, "config")
+    package_confdirpath = join(_get_packagedir(), "config")
     conf_path = join(package_confdirpath, "backup.json")
     # parse .json
     parsed_json = pj.load_json(file=conf_path)
