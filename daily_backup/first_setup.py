@@ -69,7 +69,7 @@ def _write_to_config(key_path: str, cred_path: str, mysql_port: str):
     # add new key & value
     parsed_json['default_path']['KEY_PATH'] = key_path
     parsed_json['default_path']['CRED_PATH'] = cred_path
-    parsed_json['mysql']['MYSQL_PORT']
+    parsed_json['mysql']['MYSQL_PORT'] = mysql_port
     # remove existing json file.
 
     # write in new file.
@@ -106,6 +106,6 @@ if __name__ == "__main__":
     # create encrypted credential file.
     _encrypt(key_path=key_path, target_str=plainpass, outfile_path=encfile_path)
     # write to config file.
-    _write_to_config(key_path=key_path, cred_path=encfile_path, mysql_port: mysql_port)
+    _write_to_config(key_path=key_path, cred_path=encfile_path, mysql_port=mysql_port)
 
     print("初期設定が完了しました。")
