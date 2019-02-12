@@ -76,7 +76,7 @@ if __name__ == "__main__":
         cred_path = dic["default_path"]["CRED_PATH"]
     except KeyError as key_e:
         print("設定ファイルに存在しないKeyが参照されました。")
-        raise key_e:
+        raise key_e
 
     # ask for new mysql password
     plainpass = getpass("新しいMySQL/MariaDBの{}ユーザパスワード: ".format(my_user))
