@@ -24,16 +24,15 @@ from mylogger.factory import StdoutLoggerFactory, \
                              RotationLoggerFactory
 # read/write operation to file
 from iomod import rwfile
-# transfer data local to remote
-from datatransfer.datatransfer import DataTransfer
 # python standard modules
 from os.path import split, join
 import subprocess
 import time
 
+
 DUMP_OPTS = '--quick --quote-names'
-DUMP_SP_OPTS = '--quote-names --routine --no-data --no-create-info'
-FULLDUMP_OPTS = '--quote-names --skip-lock-tables --single-transaction --events --routine'
+DUMP_SP_OPTS = '--quote-names --routines --events --no-data --no-create-info'
+FULLDUMP_OPTS = '--quote-names --skip-lock-tables --single-transaction --events --routines'
 # base log file name.
 LOGFILE = 'mariadb_dailybup.log'
 # config file name.
@@ -528,6 +527,8 @@ if __name__ == '__main__':
     set_path(json_dict)
 
     if sshconn_info["Enabled"]:
+        # transfer data local to remote
+        from datatransfer.datatransfer import DataTransfer
         for host in sshconn_info["ssh_host"]:
             d_trans = DataTransfer(hostname=host,
                                    username=sshconn_info["ssh_user"],

@@ -49,7 +49,7 @@ def _encrypt(key_path: str, target_str: str, outfile_path: str):
             print("暗号化に使用されたコマンド: {}".format(cmd_encrypt))
             raise
         else:
-            # wait until the process executing command finish. 
+            # wait until the process executing command is finale. 
             ret_code = popen_obj.wait(timeout=TIMEOUT_SEC)
             if ret_code == 0:
                 # テスト用の戻り値
@@ -58,7 +58,7 @@ def _encrypt(key_path: str, target_str: str, outfile_path: str):
             f.close()
             remove(TMPFILE_PATH)
 
-def _write_to_config(key_path: str, cred_path: str):
+def _write_to_config(key_path: str, cred_path: str, mysql_port: str):
     pj = rwfile.ParseJSON()
     # make path
     package_dir = _get_packagedir()
@@ -69,6 +69,7 @@ def _write_to_config(key_path: str, cred_path: str):
     # add new key & value
     parsed_json['default_path']['KEY_PATH'] = key_path
     parsed_json['default_path']['CRED_PATH'] = cred_path
+    parsed_json['mysql']['MYSQL_PORT']
     # remove existing json file.
 
     # write in new file.
@@ -85,6 +86,7 @@ def _write_to_config(key_path: str, cred_path: str):
         raise
     else:
         print("設定ファイルへ認証ファイルの情報を反映しました。" \
+              "設定ファイルへ接続ポートの情報を反映しました。" \
               "設定ファイルのパスは {} です。".format(package_confpath))
         del pj
         # テスト用の戻り値
@@ -97,11 +99,13 @@ if __name__ == "__main__":
     encfile_path = input("パスワード暗号化ファイルの保存先パス: ")
     # input mysql/mariadb password as plain text.
     plainpass = getpass("MySQL/MariaDBのrootパスワード: ")
+    # input mysql/mariadb destination port
+    mysql_port = input("MySQL/MariaDBのポート番号: ")
 
     encfile_path = join(encfile_path, CRED_FILENAME)
     # create encrypted credential file.
     _encrypt(key_path=key_path, target_str=plainpass, outfile_path=encfile_path)
     # write to config file.
-    _write_to_config(key_path=key_path, cred_path=encfile_path)
+    _write_to_config(key_path=key_path, cred_path=encfile_path, mysql_port: mysql_port)
 
     print("初期設定が完了しました。")

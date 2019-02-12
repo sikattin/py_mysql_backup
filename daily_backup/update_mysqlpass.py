@@ -61,6 +61,7 @@ def _encrypt(key_path: str, target_str: str, outfile_path: str):
             ret_code = popen_obj.wait(timeout=TIMEOUT_SEC)
             if ret_code == 0:
                 # return for test
+                print("Credentialファイルの更新に成功しました。")
                 return True
         finally:
             f.close()
@@ -69,10 +70,20 @@ def _encrypt(key_path: str, target_str: str, outfile_path: str):
 if __name__ == "__main__":
     # get value from configuration file.
     dic = _parse_json()
-    my_user = dic["mysql"]["MYSQL_USER"]
-    key_path = dic["default_path"]["KEY_PATH"]
-    cred_path = dic["default_path"]["CRED_PATH"]
+    try:
+        my_user = dic["mysql"]["MYSQL_USER"]
+        key_path = dic["default_path"]["KEY_PATH"]
+        cred_path = dic["default_path"]["CRED_PATH"]
+    except KeyError as key_e:
+        print("設定ファイルに存在しないKeyが参照されました。")
+        raise key_e:
+
     # ask for new mysql password
     plainpass = getpass("新しいMySQL/MariaDBの{}ユーザパスワード: ".format(my_user))
+
+    print("MySQL User: {}".format(my_user))
+    print("Keyfile path(using for updating credential file): {}".format(key_path))
+    print("credential file path: {}".format(cred_path))
+    print("※もしエラーが出る場合は、上記パスや情報に誤りがないか設定ファイルから値を確認してみてください。")
     # update credential file.
     _encrypt(key_path=key_path, target_str=plainpass, outfile_path=cred_path)

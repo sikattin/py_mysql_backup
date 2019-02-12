@@ -2,7 +2,9 @@
   "default_path": {
     "_comment": "directory path to use backup script.",
     "BK_ROOT": "/data2/backup/",
-    "LOG_ROOT": "/var/log/daily_backup"
+    "LOG_ROOT": "/var/log/daily_backup",
+    "KEY_PATH": "",
+    "CRED_PATH": ""
   },
   "mysql": {
     "_comment": "necessary account information when connecting to mysql.",
@@ -12,8 +14,8 @@
     "MYSQL_PORT": "13306"
   },
   "ssh": {
-    "_comment": "necessary account info when connecting to remote host.",
-    "Enabled": 1,
+    "_comment": "if Enabled is 0, not transfering backup data to remote host. if Enabled is 1, transfeing backup data to remotehost is available. must be set a correct values. hostname should be set targeting host, username is ssh user, private_key is username's private key file path, private, remote_path is remotehost path of backup files transfer to remotehost.",
+    "Enabled": 0,
     "hostname": ["172.16.30.30"],
     "username": "Nxj_ToS_TS1",
     "private_key": "/home/Nxj_ToS_TS1/.ssh/id_rsa",
