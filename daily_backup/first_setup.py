@@ -57,6 +57,19 @@ def _encrypt(key_path: str, target_str: str, outfile_path: str):
         finally:
             f.close()
             remove(TMPFILE_PATH)
+def _parse_conf():
+    pj = rwfile.ParseJSON()
+    # make path
+    package_dir = _get_packagedir()
+    package_confdir = join(package_dir, "config")
+    package_confpath = join(package_confdir, "backup.json")
+    # parse json file.
+    parsed_json = pj.load_json(file=package_confpath)
+    return parsed_json
+
+def _read_config():
+    conf = _parse_conf()
+    return conf
 
 def _write_to_config(key_path: str, cred_path: str, mysql_port: str):
     pj = rwfile.ParseJSON()
@@ -65,7 +78,7 @@ def _write_to_config(key_path: str, cred_path: str, mysql_port: str):
     package_confdir = join(package_dir, "config")
     package_confpath = join(package_confdir, "backup.json")
     # parse json file.
-    parsed_json = pj.load_json(file=package_confpath)
+    parsed_json = _read_config()
     # add new key & value
     parsed_json['default_path']['KEY_PATH'] = key_path
     parsed_json['default_path']['CRED_PATH'] = cred_path
@@ -98,7 +111,9 @@ if __name__ == "__main__":
     # input encrypted password file path.
     encfile_path = input("パスワード暗号化ファイルの保存先パス: ")
     # input mysql/mariadb password as plain text.
-    plainpass = getpass("MySQL/MariaDBのrootパスワード: ")
+    conf = _read_config()
+    myuser = conf['mysql']['MYSQL_USER']
+    plainpass = getpass("MySQL/MariaDBの {} ユーザーパスワード: ".format(myuser))
     # input mysql/mariadb destination port
     mysql_port = input("MySQL/MariaDBのポート番号: ")
 
