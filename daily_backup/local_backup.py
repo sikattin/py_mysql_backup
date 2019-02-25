@@ -65,6 +65,7 @@ class localBackup(object):
             loglevel = 20
         if handler is None:
             handler = 'rotation'
+        self._logger = None
         self._handler = handler
         # ロガーを作る前にログファイル出力のディレクトリをあらかじめ作っておかなければ
         # エラーが出てしまうので改修予定
@@ -492,13 +493,6 @@ if __name__ == '__main__':
                         "ssh_user": obj_json['ssh']['username'],
                         "private_key": obj_json['ssh']['private_key'],
                         "remote_path": obj_json['ssh']['remote_path']}
-        conf_s3 = {"bucket": obj_json['s3']['bucket']}
-        conf_mail = {"from_addr": obj_json['mail']['from_address'],
-                     "to_addr": obj_json['mail']['to_address'],
-                     "cc_addr": obj_json['mail']['cc_address'],
-                     "smtp_server": obj_json['mail']['smtp_server'],
-                     "ses_access": obj_json['mail']['ses_access'],
-                     "ses_secret": obj_json['mail']['ses_secret']}
         if not isinstance(sshconn_info["ssh_host"], list):
             sshconn_info["ssh_host"] = [sshconn_info["ssh_host"]]
 
@@ -551,6 +545,15 @@ if __name__ == '__main__':
     conf_mail = {}
     json_dict = parse_json()
     set_path(json_dict)
+    conf_s3 = {"bucket": json_dict['s3']['bucket']}
+    conf_mail = {"from_addr": json_dict['mail']['from_address'],
+                    "to_addr": json_dict['mail']['to_address'],
+                    "cc_addr": json_dict['mail']['cc_address'],
+                    "smtp_server": json_dict['mail']['smtp_server'],
+                    "ses_access": json_dict['mail']['ses_access'],
+                    "ses_secret": json_dict['mail']['ses_secret'],
+                    "smtp_port": json_dict['mail']['smtp_port']
+    }
     mail_args = (conf_mail['from_addr'],
                  conf_mail['to_addr'],
                  conf_mail['cc_addr'])
@@ -578,6 +581,7 @@ if __name__ == '__main__':
             trans_s3 = TransferS3Notification(conf_s3['bucket'],
                                             conf_mail['smtp_server'],
                                             *mail_args,
+                                            smtp_port=conf_mail['smtp_port'],
                                             logger=logger,
                                             handler=args.handler,
                                             ses_accesskey=conf_mail['ses_access'],

@@ -35,6 +35,7 @@
     "cc_address": "",
     "smtp_server": "59.128.93.227",
     "ses_access": "",
-    "ses_secret": ""
+    "ses_secret": "",
+    "smtp_port": 587
   }
 }
