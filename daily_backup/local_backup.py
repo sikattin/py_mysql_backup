@@ -24,10 +24,13 @@ from mylogger.factory import StdoutLoggerFactory, \
                              RotationLoggerFactory
 # read/write operation to file
 from iomod import rwfile
+from my_utils import my_utils
 # python standard modules
-from os.path import split, join
+from os.path import split, join, getsize
+from socket import gethostname
 import subprocess
 import time
+import os
 
 
 DUMP_OPTS = '--quick --quote-names'
@@ -470,7 +473,6 @@ class localBackup(object):
         #self._logger.close()
         # 転送先の定期的なファイル削除処理と転送元のzipファイルを削除する。
 
-
 if __name__ == '__main__':
     import argparse
     import daily_backup
@@ -490,6 +492,13 @@ if __name__ == '__main__':
                         "ssh_user": obj_json['ssh']['username'],
                         "private_key": obj_json['ssh']['private_key'],
                         "remote_path": obj_json['ssh']['remote_path']}
+        conf_s3 = {"bucket": obj_json['s3']['bucket']}
+        conf_mail = {"from_addr": obj_json['mail']['from_address'],
+                     "to_addr": obj_json['mail']['to_address'],
+                     "cc_addr": obj_json['mail']['cc_address'],
+                     "smtp_server": obj_json['mail']['smtp_server'],
+                     "ses_access": obj_json['mail']['ses_access'],
+                     "ses_secret": obj_json['mail']['ses_secret']}
         if not isinstance(sshconn_info["ssh_host"], list):
             sshconn_info["ssh_host"] = [sshconn_info["ssh_host"]]
 
@@ -514,6 +523,21 @@ if __name__ == '__main__':
                            help="settings the handler of log outputed.\n" \
                                 "default handler is 'rotation'. log is outputed in file.\n" \
                                  "a valid value is 'file' | 'console' | 'rotation'")
+    argparser.add_argument('--upload_s3', action='store_true',
+                                          required=False,
+                                          help='enable to upload to S3 bucket'
+    )
+    argparser.add_argument('--key_name', metavar='<KEY_NAME>',
+                                         type=str,
+                                         required=False,
+                                         default=None,
+                                         help='Key name of the uploading dump file' \
+                                         'default value is None' \
+                                         'dump will be uploaded root of bucket by default.'
+    )
+    argparser.add_argument('--no_compress', action='store_true',
+                           required=False,
+                           help='not compress the target file.')
     args = argparser.parse_args()
 
     db_backup = localBackup(loglevel=args.loglevel, handler=args.handler)
@@ -523,8 +547,13 @@ if __name__ == '__main__':
     log_path = {}
     # information about SSH connection
     sshconn_info = {}
+    conf_s3 = {}
+    conf_mail = {}
     json_dict = parse_json()
     set_path(json_dict)
+    mail_args = (conf_mail['from_addr'],
+                 conf_mail['to_addr'],
+                 conf_mail['cc_addr'])
 
     if sshconn_info["Enabled"]:
         # transfer data local to remote
@@ -538,5 +567,32 @@ if __name__ == '__main__':
             d_trans.transfer_files(targets=[db_backup.bk_dir],
                                    remote_path=sshconn_info["remote_path"],
                                    delete=True)
-    # logger close
-    db_backup._logger.close()
+    logger = db_backup._logger
+    # create S3Uploader Object
+    if args.upload_s3:
+        from transfer_s3.transfer_s3 import TransferS3Notification
+        
+        src = db_backup.bk_dir
+        key_name = args.key_name
+        try:
+            trans_s3 = TransferS3Notification(conf_s3['bucket'],
+                                            conf_mail['smtp_server'],
+                                            *mail_args,
+                                            logger=logger,
+                                            handler=args.handler,
+                                            ses_accesskey=conf_mail['ses_access'],
+                                            ses_secretkey=conf_mail['ses_secret'],
+                                            is_ses_auth=True,
+                                            is_remove=True)
+            if not args.no_compress:
+                src = trans_s3.compress_srcfile(src)
+            trans_s3.upload(src, key_name=key_name)
+        except Exception as e:
+            logger.error("Failed uploading to S3!")
+            logger.exception(str(e))
+            raise e
+        finally:
+            # logger close
+            db_backup._logger.close()
+            logger.info("Finished daily backup.")
+

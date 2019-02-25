@@ -24,5 +24,17 @@
   "log": {
     "_comment": "log settings",
     "backup_count": 3
+  },
+  "s3": {
+    "_comment": "s3 settings",
+    "bucket": "nxj-tos-backup",
+  }
+  "mail": {
+    "from_address": "notifi.tech.tos@nexon.co.jp",
+    "to_address": "notifi.tech.tos@nexon.co.jp",
+    "cc_address": "",
+    "smtp_server": "59.128.93.227",
+    "ses_access": "",
+    "ses_secret": ""
   }
 }
