@@ -27,8 +27,8 @@
   },
   "s3": {
     "_comment": "s3 settings",
-    "bucket": "nxj-tos-backup",
-  }
+    "bucket": "nxj-tos-backup"
+  },
   "mail": {
     "from_address": "notifi.tech.tos@nexon.co.jp",
     "to_address": "notifi.tech.tos@nexon.co.jp",

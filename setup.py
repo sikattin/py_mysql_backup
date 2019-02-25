@@ -11,7 +11,8 @@ requirement = ['py_mysql',
                'mylogger',
                'iomod',
                'connection',
-               'datatransfer']
+               'datatransfer',
+               's3_transfer']
 description = 'MySQL Backup Script.\n' \
               '================================================' \
               'This script is connecting to MySQL server, ' \
