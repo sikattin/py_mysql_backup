@@ -11,15 +11,15 @@
     "MYSQL_USER": "root",
     "MYSQL_DB": "mysql",
     "MYSQL_HOST": "localhost",
-    "MYSQL_PORT": "13306"
+    "MYSQL_PORT": "3306"
   },
   "ssh": {
     "_comment": "if Enabled is 0, not transfering backup data to remote host. if Enabled is 1, transfeing backup data to remotehost is available. must be set a correct values. hostname should be set targeting host, username is ssh user, private_key is username's private key file path, private, remote_path is remotehost path of backup files transfer to remotehost.",
     "Enabled": 0,
-    "hostname": ["172.16.30.30"],
-    "username": "Nxj_ToS_TS1",
-    "private_key": "/home/Nxj_ToS_TS1/.ssh/id_rsa",
-    "remote_path": "/home/Nxj_ToS_TS1/backup/world5" 
+    "hostname": ["x.x.x.x"],
+    "username": "ssh_username",
+    "private_key": "privatekey_path",
+    "remote_path": "remote path" 
   },
   "log": {
     "_comment": "log settings",
@@ -27,15 +27,15 @@
   },
   "s3": {
     "_comment": "s3 settings",
-    "bucket": "nxj-tos-backup"
+    "bucket": "s3 bucket name"
   },
   "mail": {
-    "from_address": "notifi.tech.tos@nexon.co.jp",
-    "to_address": "notifi.tech.tos@nexon.co.jp",
-    "cc_address": "",
-    "smtp_server": "59.128.93.227",
-    "ses_access": "",
-    "ses_secret": "",
+    "from_address": "fromaddr@domain",
+    "to_address": "toaddr@domain",
+    "cc_address": "ccaddr@domain",
+    "smtp_server": "x.x.x.x",
+    "ses_access": "ses user name",
+    "ses_secret": "ses password",
     "smtp_port": 587
   }
 }
