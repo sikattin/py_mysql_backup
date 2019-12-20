@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 
-# Learn more: https://github.com/kennethreitz/setup.py
-
 from setuptools import setup, find_packages
 import os
 
@@ -31,12 +29,12 @@ with open('LICENSE') as f:
     license = f.read()
 
 setup(
-    name='daily_backup',
+    name='mysql_backup',
     version='1.6',
     description=description,
     long_description=readme,
     author='Takeki Shikano',
-    author_email='shikano.takeki@nexon.co.jp',
+    author_email='',
     require=requirement,
     url=None,
     license='MIT',
